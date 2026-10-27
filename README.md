@@ -15,6 +15,19 @@ wieder verfügbar).
 - Optional: **Auto-Kauf** – bestellt ein Produkt selbstständig, sobald der Zielpreis erreicht ist
   (mit Höchstbetrag, Probelauf und nur einem Versuch, siehe unten)
 
+## Fenster
+Unter Einstellungen → „Fenster“:
+- **Bei Alarm Amazon automatisch öffnen:** öffnet die Produktseite, nach einem Auto-Kauf die Bestellübersicht.
+- **Probelauf und Auto-Kauf in sichtbarem Fenster:** du siehst live, was die App klickt (Statusbalken oben).
+  Das Fenster bleibt am Ende offen. Schließt du es mittendrin, wird abgebrochen.
+- **Links in Chrome öffnen:** Buttons in App und Benachrichtigung öffnen Chrome statt des App-Fensters.
+  Chrome hat eine eigene Amazon-Anmeldung, und „Zur Kasse“ wird dort nicht automatisch geklickt.
+  „Bei Amazon anmelden“ öffnet immer das App-Fenster, weil Auto-Kauf und Warenkorb dessen Anmeldung nutzen.
+
+Android lässt Apps aus dem Hintergrund keine Fenster öffnen. Gib deshalb über den Knopf die Erlaubnis
+**„Über anderen Apps einblenden“**. Ohne sie öffnet sich das Fenster bei Alarm nur bei gesperrtem
+Bildschirm (wie ein Wecker), und der Auto-Kauf im Hintergrund läuft unsichtbar.
+
 ## Auto-Kauf
 Einrichten:
 1. In der App bei Amazon anmelden („Bei Amazon anmelden“).
@@ -65,6 +78,8 @@ app/src/main/java/de/amazonmonitor/
     CartAdder.kt      automatisch in den Warenkorb legen
     AutoBuyer.kt      Auto-Kauf über „Jetzt kaufen“ (mit Probelauf)
     WebActivity.kt    Amazon-Fenster, Anmeldung, Zur-Kasse-Klick
+    WatchActivity.kt  sichtbares Fenster für Probelauf/Auto-Kauf
+    Links.kt          Links im App-Fenster oder in Chrome öffnen
 ```
 
 ## APK bauen und installieren

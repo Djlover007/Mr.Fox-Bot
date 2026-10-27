@@ -153,6 +153,23 @@ object Store {
     /** Höchster Gesamtbetrag (inkl. Versand) pro automatischer Bestellung. 0 = Auto-Kauf aus. */
     fun autoBuyCap(c: Context): Double = prefs(c).getFloat("autobuy_cap", 0f).toDouble()
 
+    /** Bei Alarm Amazon-Seite automatisch öffnen. */
+    fun openOnAlert(c: Context): Boolean = prefs(c).getBoolean("open_on_alert", false)
+
+    /** Probelauf/Auto-Kauf in einem sichtbaren Fenster zeigen. */
+    fun watchBuy(c: Context): Boolean = prefs(c).getBoolean("watch_buy", false)
+
+    /** Links in Chrome statt im App-Fenster öffnen. */
+    fun externalBrowser(c: Context): Boolean = prefs(c).getBoolean("external_browser", false)
+
+    fun saveWindows(c: Context, openOnAlert: Boolean, watchBuy: Boolean, externalBrowser: Boolean) {
+        prefs(c).edit()
+            .putBoolean("open_on_alert", openOnAlert)
+            .putBoolean("watch_buy", watchBuy)
+            .putBoolean("external_browser", externalBrowser)
+            .apply()
+    }
+
     fun saveAutoBuy(c: Context, enabled: Boolean, cap: Double) {
         prefs(c).edit()
             .putBoolean("autobuy", enabled)

@@ -140,28 +140,42 @@ function hintOf(d){
         JSONObject()
     }
 
-    suspend fun buy(ctx: Context, domain: String, asin: String, maxTotal: Double, dryRun: Boolean): Result =
+    /**
+     * @param visible true = Ablauf in einem sichtbaren Fenster ([WatchActivity]) zeigen. Lässt Android
+     * das Fenster nicht zu (App im Hintergrund ohne „Über anderen Apps einblenden“), läuft es unsichtbar.
+     */
+    suspend fun buy(
+        ctx: Context, domain: String, asin: String, maxTotal: Double, dryRun: Boolean, visible: Boolean = false
+    ): Result =
         mutex.withLock {
             withContext(Dispatchers.Main) {
+                val watch = if (visible) WatchActivity.open(ctx) else null
                 var placed = false
-                withTimeoutOrNull(120_000L) {
-                    execute(ctx, domain, asin, maxTotal, dryRun) { placed = true }
+                val r = withTimeoutOrNull(120_000L) {
+                    execute(ctx, watch, domain, asin, maxTotal, dryRun) { placed = true }
                 } ?: if (placed) {
                     Result(Outcome.UNCLEAR, "Zeitüberschreitung nach dem Klick auf „Bestellen“")
                 } else {
                     Result(Outcome.FAILED, "Zeitüberschreitung")
                 }
+                watch?.finished(describe(r))
+                r
             }
         }
 
     @SuppressLint("SetJavaScriptEnabled")
     private suspend fun execute(
-        ctx: Context, domain: String, asin: String, maxTotal: Double, dryRun: Boolean, onPlaced: () -> Unit
+        ctx: Context, watch: WatchActivity?, domain: String, asin: String, maxTotal: Double, dryRun: Boolean,
+        onPlaced: () -> Unit
     ): Result = suspendCancellableCoroutine { cont ->
-        val web = WebView(ctx.applicationContext)
-        web.settings.javaScriptEnabled = true
-        web.settings.domStorageEnabled = true
+        // Sichtbares Fenster: dessen WebView benutzen (bleibt nach dem Ende offen). Sonst eine unsichtbare.
+        val owned = watch == null
+        val web = watch?.web ?: WebView(ctx.applicationContext).apply {
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+        }
         val handler = Handler(Looper.getMainLooper())
+        fun status(s: String) = watch?.setStatus((if (dryRun) "Probelauf: " else "Auto-Kauf: ") + s)
 
         // 0 = Produktseite lädt, 1 = „Jetzt kaufen“ gedrückt, 2 = Bestellung abgeschickt
         var stage = 0
@@ -169,22 +183,30 @@ function hintOf(d){
         var noTotal = 0
         var total: Double? = null
 
-        fun done(r: Result) {
-            if (cont.isActive) {
-                handler.removeCallbacksAndMessages(null)
-                cont.resume(r)
+        fun release() {
+            handler.removeCallbacksAndMessages(null)
+            watch?.onClosed = null
+            if (owned) {
                 web.stopLoading()
                 web.destroy()
             }
         }
 
-        cont.invokeOnCancellation {
-            handler.post {
-                handler.removeCallbacksAndMessages(null)
-                web.stopLoading()
-                web.destroy()
+        fun done(r: Result) {
+            if (cont.isActive) {
+                cont.resume(r)
+                release()
             }
         }
+
+        cont.invokeOnCancellation { handler.post { release() } }
+
+        // Schließt du das Fenster mittendrin, wird abgebrochen (nach dem Bestell-Klick: „unklar“).
+        watch?.onClosed = {
+            if (stage == 2) done(Result(Outcome.UNCLEAR, "Fenster nach dem Bestell-Klick geschlossen", total))
+            else done(Result(Outcome.FAILED, "Fenster geschlossen"))
+        }
+        status("Lade Produktseite …")
 
         val poll = object : Runnable {
             fun next() {
@@ -239,6 +261,7 @@ function hintOf(d){
                                         stage = 2
                                         polls = 0
                                         onPlaced()
+                                        status("Bestellung wird abgeschickt …")
                                         web.evaluateJavascript(placeOrderJs(), null)
                                     }
                                 }
@@ -262,7 +285,10 @@ function hintOf(d){
                         view.evaluateJavascript(buyNowJs()) { res ->
                             if (!cont.isActive) return@evaluateJavascript
                             when {
-                                res != null && res.contains("clicked") -> handler.postDelayed(poll, 2500)
+                                res != null && res.contains("clicked") -> {
+                                    status("„Jetzt kaufen“ gedrückt, suche Bestellseite …")
+                                    handler.postDelayed(poll, 2500)
+                                }
                                 res != null && res.contains("captcha") ->
                                     done(Result(Outcome.BLOCKED, "Amazon zeigt ein Captcha"))
                                 else -> done(

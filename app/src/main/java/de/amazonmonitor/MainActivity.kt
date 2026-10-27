@@ -7,6 +7,7 @@ import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.text.InputType
 import android.widget.Button
 import android.widget.CheckBox
@@ -35,13 +36,14 @@ class MainActivity : AppCompatActivity() {
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_LONG).show()
 
-    private fun openWeb(url: String, checkout: Boolean = false) {
-        startActivity(
-            Intent(this, WebActivity::class.java)
-                .putExtra("url", url)
-                .putExtra("checkout", checkout)
-        )
-    }
+    private var overlayHint: () -> Unit = {}
+
+    private fun overlayText() =
+        if (Links.canOpenFromBackground(this)) "✅ „Über anderen Apps einblenden“ erlaubt"
+        else "Erlaubnis „Über anderen Apps einblenden“ geben (für Fenster bei Alarm)"
+
+    /** Öffnet je nach Einstellung im App-Fenster oder in Chrome. */
+    private fun openWeb(url: String, checkout: Boolean = false) = Links.open(this, url, checkout)
 
     private fun label(t: String) = TextView(this).apply {
         text = t
@@ -144,7 +146,39 @@ class MainActivity : AppCompatActivity() {
         )
         root.addView(cbBuy)
         root.addView(inCap)
+
+        // --- Fenster
+        root.addView(label("Fenster"))
+        val cbOpen = CheckBox(this).apply {
+            text = "Bei Alarm Amazon automatisch öffnen (Produkt; nach Auto-Kauf: Bestellungen)"
+            isChecked = Store.openOnAlert(this@MainActivity)
+        }
+        val cbWatch = CheckBox(this).apply {
+            text = "Probelauf und Auto-Kauf in sichtbarem Fenster zeigen"
+            isChecked = Store.watchBuy(this@MainActivity)
+        }
+        val cbChrome = CheckBox(this).apply {
+            text = "Links in Chrome statt im App-Fenster öffnen " +
+                "(Chrome hat eine eigene Amazon-Anmeldung; „Zur Kasse“ klickt dort nicht automatisch)"
+            isChecked = Store.externalBrowser(this@MainActivity)
+        }
+        root.addView(cbOpen)
+        root.addView(cbWatch)
+        root.addView(cbChrome)
+        val overlayBtn = button("") {
+            startActivity(
+                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+            )
+        }
+        overlayHint = { overlayBtn.text = overlayText() }
+        overlayHint()
+        root.addView(overlayBtn)
+
         root.addView(button("Speichern & Überwachung starten") {
+            Store.saveWindows(this, cbOpen.isChecked, cbWatch.isChecked, cbChrome.isChecked)
+            if ((cbOpen.isChecked || cbWatch.isChecked) && !Links.canOpenFromBackground(this)) {
+                toast("Tipp: Erlaube „Über anderen Apps einblenden“, sonst öffnen sich Fenster im Hintergrund nur bei gesperrtem Bildschirm.")
+            }
             val domain = inDomain.text.toString().trim().removePrefix("www.").ifEmpty { "amazon.de" }
             val interval = (inInterval.text.toString().toIntOrNull() ?: 60).coerceAtLeast(15)
             val drop = inDrop.text.toString().toIntOrNull() ?: 10
@@ -210,7 +244,8 @@ class MainActivity : AppCompatActivity() {
         })
 
         root.addView(button("Bei Amazon anmelden") {
-            openWeb("https://www.${Store.domain(this)}/gp/sign-in.html")
+            // Immer im App-Fenster: Auto-Kauf und Warenkorb nutzen die Anmeldung der App.
+            startActivity(Links.inApp(this, "https://www.${Store.domain(this)}/gp/sign-in.html"))
         })
 
         root.addView(button("Jetzt prüfen") {
@@ -240,6 +275,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        overlayHint()
         refresh()
     }
 
@@ -369,7 +405,10 @@ class MainActivity : AppCompatActivity() {
                     toast("Probelauf läuft, bitte bis zu 2 Minuten warten … Es wird nichts bestellt.")
                     CoroutineScope(Dispatchers.Main).launch {
                         val res = try {
-                            AutoBuyer.buy(this@MainActivity, Store.domain(this@MainActivity), p.asin, cap, dryRun = true)
+                            AutoBuyer.buy(
+                                this@MainActivity, Store.domain(this@MainActivity), p.asin, cap,
+                                dryRun = true, visible = Store.watchBuy(this@MainActivity)
+                            )
                         } catch (e: Exception) {
                             AutoBuyer.Result(AutoBuyer.Outcome.FAILED, e.message ?: "Fehler")
                         }
