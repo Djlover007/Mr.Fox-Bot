@@ -374,7 +374,13 @@ class MainActivity : AppCompatActivity() {
                             AutoBuyer.Result(AutoBuyer.Outcome.FAILED, e.message ?: "Fehler")
                         }
                         isEnabled = true
-                        toast(AutoBuyer.describe(res))
+                        if (isFinishing || isDestroyed) return@launch
+                        AlertDialog.Builder(this@MainActivity)
+                            .setTitle("Probelauf: ${p.name}")
+                            .setMessage(AutoBuyer.describe(res))
+                            .setPositiveButton("OK", null)
+                            .show()
+                            .findViewById<TextView>(android.R.id.message)?.setTextIsSelectable(true)
                     }
                 }
             }

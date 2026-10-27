@@ -77,15 +77,56 @@ object AutoBuyer {
             "docs.push(document);" +
             "var BTN=${JSONArray(PLACE_ORDER_SELECTORS)};var TOT=${JSONArray(TOTAL_SELECTORS)};"
 
-    private fun pollJs() = "(function(){" + docsJs() +
+    /**
+     * Sucht den Gesamtbetrag über die Beschriftung („Gesamtsumme“, „Gesamtbetrag“ …) und nimmt den
+     * letzten €-Betrag in derselben Zeile. hintOf() sammelt €-Beträge der Seite für die Fehlersuche.
+     */
+    private const val FIND_TOTAL_JS = """
+function findTotal(d){
+ var labels=[/^(gesamtsumme|gesamtbetrag|bestellsumme|zu zahlender betrag|order total)/i,/^(gesamt|summe|total)\b/i];
+ var pr=/(\d{1,3}(?:[.\s]\d{3})*,\d{2}\s*€|€\s*\d{1,3}(?:[.,\s]\d{3})*[.,]\d{2}|\d+[.,]\d{2}\s*€)/g;
+ var els=d.querySelectorAll('span,td,th,div,label,dt,dd,strong,b,h2,h3,h4,h5,p');
+ for(var L=0;L<labels.length;L++){
+  for(var i=0;i<els.length;i++){
+   var e=els[i];if(e.children.length>3)continue;
+   var t=(e.textContent||'').replace(/\s+/g,' ').trim();
+   if(t.length>60||!labels[L].test(t))continue;
+   var m=t.match(pr);if(m)return m[m.length-1];
+   var row=e.parentElement;
+   for(var up=0;up<4&&row;up++){
+    var rt=(row.textContent||'').replace(/\s+/g,' ');
+    if(rt.length>300)break;
+    m=rt.match(pr);if(m)return m[m.length-1];
+    row=row.parentElement;
+   }
+  }
+ }
+ return null;
+}
+function hintOf(d){
+ var out=[];var els=d.querySelectorAll('span,td,div,dd,strong,b');
+ for(var i=0;i<els.length&&out.length<8;i++){
+  var e=els[i];if(e.children.length)continue;
+  var t=(e.textContent||'').trim();
+  if(t.length>30||t.indexOf('€')<0)continue;
+  var p=e.parentElement&&e.parentElement.parentElement;
+  var s=((p&&p.textContent)||t).replace(/\s+/g,' ').trim().slice(0,70);
+  if(out.indexOf(s)<0)out.push(s);
+ }
+ return out.join(' | ');
+}
+"""
+
+    private fun pollJs() = "(function(){" + docsJs() + FIND_TOTAL_JS +
         "var h=location.href;" +
         "if(h.indexOf('thankyou')>=0||document.getElementById('widget-purchaseConfirmationStatus'))" +
         "return JSON.stringify({s:'done'});" +
         "if($CAPTCHA_TEST)return JSON.stringify({s:'captcha'});" +
         "if(h.indexOf('/ap/')>=0)return JSON.stringify({s:'login'});" +
         "for(var k=0;k<docs.length;k++){var d=docs[k];var b=q(d,BTN);if(!b)continue;var t=q(d,TOT);" +
-        "if(t)return JSON.stringify({s:'ready',total:(t.textContent||'').trim()});" +
-        "return JSON.stringify({s:'nototal'});}" +
+        "var tt=t?(t.textContent||'').trim():'';if(!/\\d/.test(tt))tt=findTotal(d)||'';" +
+        "if(tt)return JSON.stringify({s:'ready',total:tt});" +
+        "return JSON.stringify({s:'nototal',hint:hintOf(d)});}" +
         "return JSON.stringify({s:'wait'});})()"
 
     private fun placeOrderJs() = "(function(){" + docsJs() +
@@ -186,8 +227,10 @@ object AutoBuyer {
                                         return@evaluateJavascript
                                     }
                                     dryRun -> {
+                                        val hint = o.optString("hint")
                                         val info = if (t != null) "Gesamtbetrag ${money(t)}"
-                                        else "Gesamtbetrag nicht lesbar, würde trotzdem bestellen"
+                                        else "Gesamtbetrag nicht lesbar, würde trotzdem bestellen" +
+                                            if (hint.isNotEmpty()) ". Gefundene Beträge: $hint" else ""
                                         done(Result(Outcome.DRY_RUN_OK, "Bestellknopf gefunden, $info – Probelauf, nichts bestellt", t))
                                         return@evaluateJavascript
                                     }
