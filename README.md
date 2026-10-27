@@ -9,7 +9,10 @@ wieder verfügbar).
 - Hintergrundprüfung (mind. alle 15 Minuten)
 - Benachrichtigung mit Buttons „In den Warenkorb“ und „Zur Kasse“
 - Discord-Webhook (optional) mit Testbutton
-- Amazon-Anmeldung im App-Fenster; Zugang (E-Mail/Passwort) optional, verschlüsselt im Android-Tresor
+- Automatische Amazon-Anmeldung: Zugang (E-Mail/Passwort) verschlüsselt im Android-Tresor; die App meldet
+  sich im App-Fenster, beim Auto-Kauf und beim automatischen Warenkorb selbst an (auch wenn Amazon vor der
+  Kasse erneut das Passwort will). Nicht automatisch gehen: Captcha, Bestätigungscode (Zwei-Schritt-
+  Verifizierung) und Freigabe per Amazon-App/SMS – dann einmal über „Bei Amazon anmelden“ selbst bestätigen.
 - Optional: Artikel bei Alarm automatisch in den Warenkorb legen (Testbutton pro Produkt)
 - „Zur Kasse“ öffnet nur den Bezahlvorgang, das endgültige „Jetzt kaufen“ tippst du selbst
 - Optional: **Auto-Kauf** – bestellt ein Produkt selbstständig, sobald der Zielpreis erreicht ist
@@ -30,7 +33,7 @@ Bildschirm (wie ein Wecker), und der Auto-Kauf im Hintergrund läuft unsichtbar.
 
 ## Auto-Kauf
 Einrichten:
-1. In der App bei Amazon anmelden („Bei Amazon anmelden“).
+1. Unter „Amazon-Zugang“ E-Mail und Passwort speichern – die App meldet sich dann selbst an.
 2. Unter Einstellungen „Auto-Kauf erlauben“ ankreuzen, einen **Höchstbetrag pro Bestellung
    (inkl. Versand)** eintragen und speichern. Ohne Höchstbetrag bleibt Auto-Kauf aus.
 3. Produkt mit Zielpreis anlegen, dann **„Auto-Kauf Probelauf“** drücken. Der Probelauf geht über

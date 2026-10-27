@@ -233,7 +233,9 @@ class MainActivity : AppCompatActivity() {
             } else {
                 Store.saveLogin(this, mail, if (pw.isEmpty()) null else pw)
                 inPw.setText("")
-                toast("Zugang verschlüsselt gespeichert.")
+                toast("Zugang verschlüsselt gespeichert. Melde jetzt automatisch an …")
+                // Gleich anmelden, damit die Sitzung für Auto-Kauf und Warenkorb steht.
+                startActivity(Links.inApp(this, "https://www.${Store.domain(this)}/gp/sign-in.html"))
             }
         })
         root.addView(button("Zugang löschen") {

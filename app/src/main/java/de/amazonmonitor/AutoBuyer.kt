@@ -182,6 +182,10 @@ function hintOf(d){
         var polls = 0
         var noTotal = 0
         var total: Double? = null
+        val productUrl = "https://www.$domain/dp/$asin"
+        val login = AutoLogin.Session()
+        var loginRunning = false
+        var reloadedAfterLogin = false
 
         fun release() {
             handler.removeCallbacksAndMessages(null)
@@ -208,6 +212,30 @@ function hintOf(d){
         }
         status("Lade Produktseite …")
 
+        // Anmeldung vor dem Kauf (Produktseite leitet auf die Anmeldung um).
+        fun loginLoop() {
+            if (!cont.isActive) return
+            AutoLogin.step(ctx, web, login) { st ->
+                if (!cont.isActive) return@step
+                when (st) {
+                    AutoLogin.State.FILLED, AutoLogin.State.WAIT -> {
+                        status("Melde bei Amazon an …")
+                        handler.postDelayed({ loginLoop() }, 2000)
+                    }
+                    AutoLogin.State.NOT_LOGIN_PAGE -> {
+                        loginRunning = false
+                        // Nach der Anmeldung nicht auf der Produktseite gelandet? Einmal neu laden.
+                        if (stage == 0 && web.url?.contains("/dp/") != true && !reloadedAfterLogin) {
+                            reloadedAfterLogin = true
+                            status("Angemeldet, lade Produktseite …")
+                            web.loadUrl(productUrl)
+                        }
+                    }
+                    else -> done(Result(Outcome.NOT_LOGGED_IN, AutoLogin.explain(st)))
+                }
+            }
+        }
+
         val poll = object : Runnable {
             fun next() {
                 polls++
@@ -233,8 +261,22 @@ function hintOf(d){
                             if (stage == 2) done(Result(Outcome.UNCLEAR, "Captcha nach dem Bestellen", total))
                             else done(Result(Outcome.BLOCKED, "Amazon zeigt ein Captcha"))
                         "login" ->
-                            if (stage == 2) done(Result(Outcome.UNCLEAR, "Anmeldung nach dem Bestellen verlangt", total))
-                            else done(Result(Outcome.NOT_LOGGED_IN, "Amazon verlangt eine Anmeldung"))
+                            if (stage == 2) {
+                                done(Result(Outcome.UNCLEAR, "Anmeldung nach dem Bestellen verlangt", total))
+                            } else {
+                                // Amazon will vor der Kasse oft noch einmal das Passwort.
+                                AutoLogin.step(ctx, web, login) { st ->
+                                    if (!cont.isActive) return@step
+                                    when (st) {
+                                        AutoLogin.State.FILLED, AutoLogin.State.WAIT,
+                                        AutoLogin.State.NOT_LOGIN_PAGE -> {
+                                            status("Melde bei Amazon an …")
+                                            next()
+                                        }
+                                        else -> done(Result(Outcome.NOT_LOGGED_IN, AutoLogin.explain(st)))
+                                    }
+                                }
+                            }
                         "ready", "nototal" -> {
                             if (stage == 1) {
                                 val t = if (o.optString("s") == "ready") Scraper.parsePrice(o.optString("total")) else null
@@ -279,7 +321,10 @@ function hintOf(d){
                 if (view == null || url == null || !cont.isActive || stage != 0) return
                 when {
                     url.contains("validateCaptcha") -> done(Result(Outcome.BLOCKED, "Amazon zeigt ein Captcha"))
-                    url.contains("/ap/") -> done(Result(Outcome.NOT_LOGGED_IN, "Amazon verlangt eine Anmeldung"))
+                    url.contains("/ap/") -> if (!loginRunning) {
+                        loginRunning = true
+                        loginLoop()
+                    }
                     url.contains("/dp/") -> {
                         stage = 1
                         view.evaluateJavascript(buyNowJs()) { res ->
@@ -304,7 +349,7 @@ function hintOf(d){
             }
         }
 
-        web.loadUrl("https://www.$domain/dp/$asin")
+        web.loadUrl(productUrl)
     }
 
     /** Kurzer Text für Benachrichtigung, Discord und Produktliste. */

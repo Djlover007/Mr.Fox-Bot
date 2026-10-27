@@ -1,15 +1,14 @@
 package de.amazonmonitor
 
 import android.annotation.SuppressLint
-import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
-import org.json.JSONObject
 
 /**
  * In-App-Browser für Amazon. Ist ein Zugang gespeichert, füllt die App die Anmeldeseite aus
@@ -17,8 +16,8 @@ import org.json.JSONObject
  */
 class WebActivity : AppCompatActivity() {
     private lateinit var web: WebView
-    private var emailTries = 0
-    private var pwTries = 0
+    private val login = AutoLogin.Session()
+    private var lastHint: String? = null
     private var checkoutTried = false
     private val wantCheckout: Boolean
         get() = intent.getBooleanExtra("checkout", false)
@@ -36,7 +35,7 @@ class WebActivity : AppCompatActivity() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 if (view != null) {
-                    tryLogin(view, url)
+                    tryLogin(view)
                     tryCheckout(view, url)
                 }
             }
@@ -61,42 +60,19 @@ class WebActivity : AppCompatActivity() {
         }
     }
 
-    private fun tryLogin(view: WebView, url: String?) {
-        val uri = Uri.parse(url ?: return)
-        val host = uri.host?.lowercase() ?: return
-        val domain = Store.domain(this).lowercase()
-        // Nur exakt die Amazon-Domain oder echte Subdomains davon (z. B. www.amazon.de),
-        // nicht etwa "evilamazon.de".
-        val isAmazon = host == domain || host.endsWith(".$domain")
-        if (uri.scheme != "https" || !isAmazon ||
-            !(uri.path ?: "").contains("/ap/signin")
-        ) return
-
-        val email = Store.loginEmail(this)
-        val pw = Store.loginPassword(this)
-        if (email.isEmpty() || pw == null) return
-
-        val detect = "(function(){" +
-            "if(document.getElementById('auth-captcha-guess'))return 'captcha';" +
-            "if(document.getElementById('ap_password'))return 'pw';" +
-            "if(document.getElementById('ap_email'))return 'email';" +
-            "return 'none';})()"
-
-        view.evaluateJavascript(detect) { result ->
-            when (result?.trim('"')) {
-                "email" -> {
-                    if (emailTries < 1) {
-                        emailTries++
-                        view.evaluateJavascript(fillScript(email, null), null)
-                    }
-                }
-                "pw" -> {
-                    if (pwTries < 1) {
-                        pwTries++
-                        view.evaluateJavascript(fillScript(email, pw), null)
-                    }
-                }
-                else -> {}
+    private fun tryLogin(view: WebView) {
+        AutoLogin.step(this, view, login) { st ->
+            if (isDestroyed) return@step
+            val hint = when (st) {
+                AutoLogin.State.OTP -> "Bitte den Bestätigungscode eingeben – danach bleibt die App angemeldet."
+                AutoLogin.State.VERIFY -> "Bitte die Anmeldung bestätigen (Amazon-App, SMS oder E-Mail)."
+                AutoLogin.State.CAPTCHA -> "Bitte das Captcha lösen."
+                AutoLogin.State.GAVE_UP -> "Automatische Anmeldung hat nicht geklappt – Passwort prüfen."
+                else -> null
+            }
+            if (hint != null && hint != lastHint) {
+                lastHint = hint
+                Toast.makeText(this, hint, Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -114,26 +90,6 @@ class WebActivity : AppCompatActivity() {
             "if(b){b.click();return 'clicked';}}" +
             "return 'none';})()"
         view.evaluateJavascript(js, null)
-    }
-
-    private fun fillScript(email: String, pw: String?): String {
-        val sb = StringBuilder()
-        sb.append("(function(){")
-        sb.append("function set(el,v){el.focus();el.value=v;")
-        sb.append("el.dispatchEvent(new Event('input',{bubbles:true}));")
-        sb.append("el.dispatchEvent(new Event('change',{bubbles:true}));}")
-        sb.append("var r=document.querySelector('input[name=rememberMe]');if(r&&!r.checked){r.click();}")
-        sb.append("var m=document.getElementById('ap_email');")
-        sb.append("if(m&&m.type!=='hidden'&&!m.value){set(m,").append(JSONObject.quote(email)).append(");}")
-        if (pw == null) {
-            sb.append("var c=document.getElementById('continue');if(c){c.click();}")
-        } else {
-            sb.append("var p=document.getElementById('ap_password');if(p){set(p,")
-                .append(JSONObject.quote(pw)).append(");}")
-            sb.append("var s=document.getElementById('signInSubmit');if(s){s.click();}")
-        }
-        sb.append("})();")
-        return sb.toString()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

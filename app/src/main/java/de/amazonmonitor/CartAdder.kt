@@ -46,7 +46,7 @@ object CartAdder {
     @SuppressLint("SetJavaScriptEnabled")
     suspend fun add(ctx: Context, domain: String, asin: String): Result =
         withContext(Dispatchers.Main) {
-            withTimeoutOrNull(60_000L) {
+            withTimeoutOrNull(90_000L) {
                 suspendCancellableCoroutine<Result> { cont ->
                     val web = WebView(ctx.applicationContext)
                     web.settings.javaScriptEnabled = true
@@ -70,6 +70,32 @@ object CartAdder {
                             handler.removeCallbacksAndMessages(null)
                             web.stopLoading()
                             web.destroy()
+                        }
+                    }
+
+                    val productUrl = "https://www.$domain/dp/$asin"
+                    val login = AutoLogin.Session()
+                    var loginRunning = false
+                    var reloadedAfterLogin = false
+
+                    // Automatisch anmelden, danach (falls nötig) die Produktseite neu laden.
+                    fun loginLoop() {
+                        if (!cont.isActive) return
+                        AutoLogin.step(ctx, web, login) { st ->
+                            if (!cont.isActive) return@step
+                            when (st) {
+                                AutoLogin.State.FILLED, AutoLogin.State.WAIT ->
+                                    handler.postDelayed({ loginLoop() }, 2000)
+                                AutoLogin.State.NOT_LOGIN_PAGE -> {
+                                    loginRunning = false
+                                    if (web.url?.contains("/dp/") != true && !reloadedAfterLogin) {
+                                        reloadedAfterLogin = true
+                                        stage = 0
+                                        web.loadUrl(productUrl)
+                                    }
+                                }
+                                else -> done(Result.NOT_LOGGED_IN, AutoLogin.explain(st))
+                            }
                         }
                     }
 
@@ -98,7 +124,10 @@ object CartAdder {
                             if (url.contains("validateCaptcha") || url.contains("/errors/")) {
                                 done(Result.FAILED, CAPTCHA_DETAIL)
                             } else if (url.contains("/ap/")) {
-                                done(Result.NOT_LOGGED_IN, "Amazon verlangt eine Anmeldung")
+                                if (!loginRunning) {
+                                    loginRunning = true
+                                    loginLoop()
+                                }
                             } else if (stage == 0 && url.contains("/dp/")) {
                                 stage = 1
                                 view.evaluateJavascript(CLICK_JS) { res ->
@@ -121,7 +150,7 @@ object CartAdder {
                         }
                     }
 
-                    web.loadUrl("https://www.$domain/dp/$asin")
+                    web.loadUrl(productUrl)
                 }
             } ?: run {
                 lastDetail = "Zeitüberschreitung"
