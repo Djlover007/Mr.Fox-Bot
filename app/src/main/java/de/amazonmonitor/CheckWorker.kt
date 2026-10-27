@@ -107,16 +107,27 @@ object Checker {
             val url = "https://www.$domain/dp/$asin"
             val cart = cartUrl(domain, asin)
             var message: String = alert
+            // Welche Seite bei „Bei Alarm automatisch öffnen“ gezeigt wird (null = nichts öffnen).
+            var openUrl: String? = if (Store.openOnAlert(ctx)) url else null
 
             if (buyNow) {
+                val visible = Store.watchBuy(ctx) && Links.canOpenFromBackground(ctx)
                 val res = try {
-                    AutoBuyer.buy(ctx, domain, asin, cap, dryRun = false)
+                    AutoBuyer.buy(ctx, domain, asin, cap, dryRun = false, visible = visible)
                 } catch (e: Exception) {
                     AutoBuyer.Result(AutoBuyer.Outcome.FAILED, e.message ?: "Fehler")
                 }
                 val line = AutoBuyer.describe(res)
                 Store.update(ctx, asin) { it.lastBuyResult = line }
                 message += "\n$line"
+                if (openUrl != null) {
+                    openUrl = when {
+                        visible -> null // Das Auto-Kauf-Fenster ist schon offen.
+                        res.outcome == AutoBuyer.Outcome.ORDERED || res.outcome == AutoBuyer.Outcome.UNCLEAR ->
+                            ordersUrl(domain)
+                        else -> url
+                    }
+                }
             } else if (Store.autoCart(ctx)) {
                 val res = try {
                     CartAdder.add(ctx, domain, asin)
@@ -135,7 +146,12 @@ object Checker {
             }
 
             val checkout = checkoutUrl(domain)
-            notifyUser(ctx, name, message, url, cart, checkout)
+            // Mit Erlaubnis „Über anderen Apps einblenden“ direkt öffnen, sonst als Vollbild-Benachrichtigung
+            // (öffnet sich bei gesperrtem/ausgeschaltetem Bildschirm, sonst erscheint sie oben).
+            val fullScreen = openUrl?.let { u ->
+                if (Links.openFromBackground(ctx, u)) null else u
+            }
+            notifyUser(ctx, name, message, url, cart, checkout, fullScreen)
             sendDiscord(
                 Store.webhook(ctx),
                 "**$name**\n$message\nProdukt: $url\nIn den Warenkorb: $cart\nZur Kasse: $checkout"
@@ -149,6 +165,9 @@ object Checker {
 
     /** Warenkorbseite; von dort geht es mit "Zur Kasse gehen" weiter. */
     fun checkoutUrl(domain: String): String = "https://www.$domain/gp/cart/view.html"
+
+    /** Bestellübersicht. */
+    fun ordersUrl(domain: String): String = "https://www.$domain/gp/your-account/order-history"
 
     /** Sendet eine Nachricht an einen Discord-Webhook. Blockierend – nur aus einem Hintergrund-Thread aufrufen. */
     fun sendDiscord(webhook: String, text: String): Boolean {
@@ -172,7 +191,8 @@ object Checker {
 
     @SuppressLint("MissingPermission")
     private fun notifyUser(
-        ctx: Context, title: String, text: String, url: String, cartUrl: String, checkoutUrl: String
+        ctx: Context, title: String, text: String, url: String, cartUrl: String, checkoutUrl: String,
+        fullScreenUrl: String? = null
     ) {
         val nm = NotificationManagerCompat.from(ctx)
         nm.createNotificationChannel(
@@ -180,25 +200,10 @@ object Checker {
                 .setName("Preisalarme")
                 .build()
         )
-        val intent = Intent(ctx, WebActivity::class.java).putExtra("url", url).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        val pi = PendingIntent.getActivity(
-            ctx, url.hashCode(), intent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-        val cartIntent = Intent(ctx, WebActivity::class.java).putExtra("url", cartUrl).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        val cartPi = PendingIntent.getActivity(
-            ctx, cartUrl.hashCode(), cartIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-        val checkoutIntent = Intent(ctx, WebActivity::class.java)
-            .putExtra("url", checkoutUrl)
-            .putExtra("checkout", true)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        val checkoutPi = PendingIntent.getActivity(
-            ctx, checkoutUrl.hashCode(), checkoutIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-        val n = NotificationCompat.Builder(ctx, CHANNEL)
+        val pi = Links.pending(ctx, url, false, url.hashCode())
+        val cartPi = Links.pending(ctx, cartUrl, false, cartUrl.hashCode())
+        val checkoutPi = Links.pending(ctx, checkoutUrl, true, checkoutUrl.hashCode())
+        val b = NotificationCompat.Builder(ctx, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle(title)
             .setContentText(text)
@@ -207,7 +212,12 @@ object Checker {
             .addAction(android.R.drawable.ic_menu_add, "In den Warenkorb", cartPi)
             .addAction(android.R.drawable.ic_menu_send, "Zur Kasse", checkoutPi)
             .setAutoCancel(true)
-            .build()
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+        if (fullScreenUrl != null) {
+            b.setCategory(NotificationCompat.CATEGORY_ALARM)
+            b.setFullScreenIntent(Links.pending(ctx, fullScreenUrl, false, fullScreenUrl.hashCode() + 1), true)
+        }
+        val n = b.build()
         try {
             nm.notify(url.hashCode(), n)
         } catch (e: SecurityException) {
