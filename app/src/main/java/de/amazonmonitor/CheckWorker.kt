@@ -54,12 +54,16 @@ object Checker {
     }
 
     private suspend fun handle(ctx: Context, domain: String, dropPct: Int, asin: String, r: Scraper.Result) {
-        val alert: String? = Store.update(ctx, asin) { p ->
+        val autoBuyOn = Store.autoBuyEnabled(ctx)
+        val cap = Store.autoBuyCap(ctx)
+        val upd = Store.update(ctx, asin) { p ->
             val prevPrice = p.lastPrice
             val prevAvail = p.available
             val first = p.lastCheck == 0L
             p.lastCheck = System.currentTimeMillis()
-            p.available = r.available
+            // Unklarer Zustand (null) überschreibt den bekannten nicht.
+            val nowAvail = r.available
+            if (nowAvail != null) p.available = nowAvail
 
             var text: String? = null
             val price = r.price
@@ -73,14 +77,30 @@ object Checker {
                     dropPct > 0 && prevPrice != null &&
                         price <= prevPrice * (1 - dropPct / 100.0) && p.lastAlertPrice != price ->
                         "Preis um mind. $dropPct % gefallen: ${money(prevPrice)} → ${money(price)}"
-                    !first && !prevAvail && r.available ->
+                    !first && !prevAvail && nowAvail == true ->
                         "Wieder verfügbar: ${money(price)}"
                     else -> null
                 }
                 if (text != null) p.lastAlertPrice = price
             }
-            text
-        }
+
+            // Auto-Kauf: nur wenn Hauptschalter an, Produkt scharf, verfügbar und Preis ≤ Ziel und ≤ Limit.
+            // Wird hier (atomar) sofort entschärft, damit höchstens EIN Kaufversuch passiert.
+            val t = p.target
+            val buyNow = autoBuyOn && p.autoBuy && nowAvail == true &&
+                price != null && t != null && price <= t && price <= cap
+            if (buyNow) {
+                p.autoBuy = false
+                p.lastBuyAttempt = System.currentTimeMillis()
+                p.lastBuyResult = "läuft …"
+                if (text == null) {
+                    text = "Zielpreis erreicht: ${money(price!!)} (Ziel ${money(t!!)})"
+                    p.lastAlertPrice = price
+                }
+            }
+            Pair(text, buyNow)
+        } ?: return
+        val (alert, buyNow) = upd
 
         if (alert != null) {
             val name = Store.load(ctx).firstOrNull { it.asin == asin }?.name ?: r.title
@@ -88,7 +108,16 @@ object Checker {
             val cart = cartUrl(domain, asin)
             var message: String = alert
 
-            if (Store.autoCart(ctx)) {
+            if (buyNow) {
+                val res = try {
+                    AutoBuyer.buy(ctx, domain, asin, cap, dryRun = false)
+                } catch (e: Exception) {
+                    AutoBuyer.Result(AutoBuyer.Outcome.FAILED, e.message ?: "Fehler")
+                }
+                val line = AutoBuyer.describe(res)
+                Store.update(ctx, asin) { it.lastBuyResult = line }
+                message += "\n$line"
+            } else if (Store.autoCart(ctx)) {
                 val res = try {
                     CartAdder.add(ctx, domain, asin)
                 } catch (e: Exception) {

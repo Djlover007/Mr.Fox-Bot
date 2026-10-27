@@ -23,8 +23,13 @@ object CartAdder {
     @Volatile
     var lastDetail: String = ""
 
+    private const val CAPTCHA_DETAIL =
+        "Amazon zeigt ein Captcha – öffne die Produktseite einmal in der App, löse es und versuche es später erneut"
+
     private const val CLICK_JS =
         "(function(){" +
+            "if(document.getElementById('captchacharacters')||" +
+            "document.querySelector('form[action*=\"validateCaptcha\"]'))return 'captcha';" +
             "var sel=['#add-to-cart-button','input#add-to-cart-button','input[name=\"submit.add-to-cart\"]'," +
             "'#add-to-cart-button-ubb'];" +
             "for(var i=0;i<sel.length;i++){var b=document.querySelector(sel[i]);" +
@@ -90,7 +95,9 @@ object CartAdder {
                     web.webViewClient = object : WebViewClient() {
                         override fun onPageFinished(view: WebView?, url: String?) {
                             if (view == null || url == null || !cont.isActive) return
-                            if (url.contains("/ap/")) {
+                            if (url.contains("validateCaptcha") || url.contains("/errors/")) {
+                                done(Result.FAILED, CAPTCHA_DETAIL)
+                            } else if (url.contains("/ap/")) {
                                 done(Result.NOT_LOGGED_IN, "Amazon verlangt eine Anmeldung")
                             } else if (stage == 0 && url.contains("/dp/")) {
                                 stage = 1
@@ -98,6 +105,8 @@ object CartAdder {
                                     if (!cont.isActive) return@evaluateJavascript
                                     if (res != null && res.contains("clicked")) {
                                         handler.postDelayed(poll, 2000)
+                                    } else if (res != null && res.contains("captcha")) {
+                                        done(Result.FAILED, CAPTCHA_DETAIL)
                                     } else {
                                         done(
                                             Result.FAILED,

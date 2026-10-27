@@ -63,8 +63,12 @@ class WebActivity : AppCompatActivity() {
 
     private fun tryLogin(view: WebView, url: String?) {
         val uri = Uri.parse(url ?: return)
-        val host = uri.host ?: return
-        if (uri.scheme != "https" || !host.endsWith(Store.domain(this)) ||
+        val host = uri.host?.lowercase() ?: return
+        val domain = Store.domain(this).lowercase()
+        // Nur exakt die Amazon-Domain oder echte Subdomains davon (z. B. www.amazon.de),
+        // nicht etwa "evilamazon.de".
+        val isAmazon = host == domain || host.endsWith(".$domain")
+        if (uri.scheme != "https" || !isAmazon ||
             !(uri.path ?: "").contains("/ap/signin")
         ) return
 

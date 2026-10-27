@@ -5,15 +5,24 @@ import org.jsoup.Jsoup
 object Scraper {
     class BlockedException(msg: String) : Exception(msg)
 
-    data class Result(val title: String, val price: Double?, val available: Boolean)
+    /**
+     * [available]: true = kaufbar, false = Amazon meldet ausdrücklich „nicht verfügbar“,
+     * null = unklar (z. B. Seite nicht erkannt). Bei null bleibt der alte Zustand erhalten.
+     */
+    data class Result(val title: String, val price: Double?, val available: Boolean?)
 
     private const val UA =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
+    // Nur Preisfelder des Hauptartikels bzw. der Buybox. Ein allgemeiner Selektor wie
+    // "span.a-price span.a-offscreen" würde auch Preise gesponserter oder empfohlener Artikel finden.
     private val PRICE_SELECTORS = listOf(
-        "#corePrice_feature_div span.a-offscreen",
-        "#corePriceDisplay_desktop_feature_div span.a-offscreen",
-        "span.a-price span.a-offscreen",
+        "#corePrice_feature_div span.a-price span.a-offscreen",
+        "#corePriceDisplay_desktop_feature_div span.priceToPay span.a-offscreen",
+        "#corePriceDisplay_desktop_feature_div span.a-price span.a-offscreen",
+        "#apex_desktop span.priceToPay span.a-offscreen",
+        "#apex_desktop span.a-price span.a-offscreen",
+        "#buybox span.a-price span.a-offscreen",
         "#priceblock_ourprice",
         "#priceblock_dealprice",
         "#price_inside_buybox",
@@ -93,7 +102,16 @@ object Scraper {
         val avail = doc.selectFirst("#availability")?.text()?.lowercase().orEmpty()
         val unavailable = listOf("nicht verfügbar", "currently unavailable", "nicht auf lager")
             .any { avail.contains(it) }
+        val hasCartButton = doc.selectFirst(
+            "#add-to-cart-button, input[name='submit.add-to-cart'], #buy-now-button"
+        ) != null
 
-        return Result(title, price, price != null && !unavailable)
+        // Verfügbarkeit unabhängig davon bestimmen, ob der Preis gefunden wurde.
+        val available: Boolean? = when {
+            unavailable -> false
+            price != null || hasCartButton -> true
+            else -> null
+        }
+        return Result(title, price, available)
     }
 }

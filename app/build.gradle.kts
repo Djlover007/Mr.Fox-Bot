@@ -11,13 +11,30 @@ android {
         applicationId = "de.amazonmonitor"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 3
+        versionName = "1.2"
     }
 
+    // Fester Signaturschlüssel aus GitHub-Secrets (siehe README). Ohne Secrets wird wie bisher
+    // mit einem zufälligen Debug-Schlüssel signiert – dann sind Updates nur mit Neuinstallation möglich.
+    val ksPath = System.getenv("SIGNING_KEYSTORE_FILE")
+    val ksFile = ksPath?.let { file(it) }
+    val fixedSigning = if (ksFile != null && ksFile.exists()) {
+        signingConfigs.create("fixed") {
+            storeFile = ksFile
+            storePassword = System.getenv("SIGNING_STORE_PASSWORD")
+            keyAlias = System.getenv("SIGNING_KEY_ALIAS")
+            keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
+        }
+    } else null
+
     buildTypes {
+        debug {
+            if (fixedSigning != null) signingConfig = fixedSigning
+        }
         release {
             isMinifyEnabled = false
+            if (fixedSigning != null) signingConfig = fixedSigning
         }
     }
 

@@ -25,8 +25,15 @@ class Product(
     var lastCheck: Long = 0L,
     var lastAlertPrice: Double? = null,
     var lastCartAdd: Long = 0L,
+    /** Auto-Kauf für dieses Produkt scharf geschaltet (schaltet sich nach einem Versuch selbst aus). */
+    var autoBuy: Boolean = false,
+    var lastBuyAttempt: Long = 0L,
+    var lastBuyResult: String = "",
 ) {
     fun toJson(): JSONObject = JSONObject()
+        .put("autoBuy", autoBuy)
+        .put("lastBuyAttempt", lastBuyAttempt)
+        .put("lastBuyResult", lastBuyResult)
         .put("asin", asin)
         .put("name", name)
         .put("target", target ?: JSONObject.NULL)
@@ -51,6 +58,12 @@ class Product(
             if (mp != null) sb.append("\nTiefstpreis: ${money(mp)}")
             sb.append("\nGeprüft: ${SimpleDateFormat("dd.MM. HH:mm", Locale.GERMANY).format(Date(lastCheck))}")
         }
+        if (autoBuy) sb.append("\n🛒 Auto-Kauf scharf")
+        if (lastBuyResult.isNotEmpty()) {
+            sb.append("\nLetzter Auto-Kauf (")
+                .append(SimpleDateFormat("dd.MM. HH:mm", Locale.GERMANY).format(Date(lastBuyAttempt)))
+                .append("): ").append(lastBuyResult)
+        }
         return sb.toString()
     }
 
@@ -65,6 +78,9 @@ class Product(
             lastCheck = o.optLong("lastCheck", 0L),
             lastAlertPrice = o.optD("lastAlertPrice"),
             lastCartAdd = o.optLong("lastCartAdd", 0L),
+            autoBuy = o.optBoolean("autoBuy", false),
+            lastBuyAttempt = o.optLong("lastBuyAttempt", 0L),
+            lastBuyResult = o.optString("lastBuyResult", ""),
         )
 
         private fun JSONObject.optD(k: String): Double? = if (isNull(k)) null else getDouble(k)
@@ -128,6 +144,19 @@ object Store {
             .putInt("drop", drop)
             .putString("webhook", webhook)
             .putBoolean("autocart", autoCart)
+            .apply()
+    }
+
+    /** Hauptschalter für Auto-Kauf. Ohne ihn bestellt die App nie selbst, auch wenn Produkte scharf sind. */
+    fun autoBuyEnabled(c: Context): Boolean = prefs(c).getBoolean("autobuy", false) && autoBuyCap(c) > 0.0
+
+    /** Höchster Gesamtbetrag (inkl. Versand) pro automatischer Bestellung. 0 = Auto-Kauf aus. */
+    fun autoBuyCap(c: Context): Double = prefs(c).getFloat("autobuy_cap", 0f).toDouble()
+
+    fun saveAutoBuy(c: Context, enabled: Boolean, cap: Double) {
+        prefs(c).edit()
+            .putBoolean("autobuy", enabled)
+            .putFloat("autobuy_cap", cap.toFloat())
             .apply()
     }
 

@@ -15,6 +15,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -131,13 +132,37 @@ class MainActivity : AppCompatActivity() {
             isChecked = Store.autoCart(this@MainActivity)
         }
         root.addView(cbCart)
+        val cbBuy = CheckBox(this).apply {
+            text = "Auto-Kauf erlauben: scharf geschaltete Produkte werden OHNE Rückfrage bestellt " +
+                "(Standard-Adresse und -Zahlungsart)"
+            isChecked = Store.autoBuyEnabled(this@MainActivity)
+        }
+        val inCap = edit(
+            "Auto-Kauf: max. Gesamtbetrag pro Bestellung in € (inkl. Versand)",
+            InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL,
+            Store.autoBuyCap(this).let { if (it > 0) it.toString() else "" }
+        )
+        root.addView(cbBuy)
+        root.addView(inCap)
         root.addView(button("Speichern & Überwachung starten") {
             val domain = inDomain.text.toString().trim().removePrefix("www.").ifEmpty { "amazon.de" }
             val interval = (inInterval.text.toString().toIntOrNull() ?: 60).coerceAtLeast(15)
             val drop = inDrop.text.toString().toIntOrNull() ?: 10
             Store.saveSettings(this, domain, interval, drop, inWebhook.text.toString().trim(), cbCart.isChecked)
+            val cap = inCap.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.0
+            if (cbBuy.isChecked && cap <= 0.0) {
+                cbBuy.isChecked = false
+                Store.saveAutoBuy(this, false, 0.0)
+                toast("Auto-Kauf bleibt aus: bitte einen Höchstbetrag eintragen.")
+            } else {
+                Store.saveAutoBuy(this, cbBuy.isChecked, cap)
+                toast(
+                    "Überwachung läuft alle $interval Minuten." +
+                        if (cbBuy.isChecked) " Auto-Kauf aktiv, Limit ${money(cap)}." else ""
+                )
+            }
             schedule(interval, update = true)
-            toast("Überwachung läuft alle $interval Minuten.")
+            refresh()
         })
         root.addView(button("Discord testen") {
             val hook = inWebhook.text.toString().trim()
@@ -229,6 +254,44 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun toggleAutoBuy(p: Product) {
+        if (p.autoBuy) {
+            Store.update(this, p.asin) { it.autoBuy = false }
+            toast("Auto-Kauf für ${p.name} entschärft.")
+            refresh()
+            return
+        }
+        val target = p.target
+        if (target == null) {
+            toast("Auto-Kauf braucht einen Zielpreis. Produkt mit Zielpreis neu hinzufügen.")
+            return
+        }
+        if (!Store.autoBuyEnabled(this)) {
+            toast("Erst unter Einstellungen „Auto-Kauf erlauben“ ankreuzen, Höchstbetrag eintragen und speichern.")
+            return
+        }
+        val cap = Store.autoBuyCap(this)
+        AlertDialog.Builder(this)
+            .setTitle("Auto-Kauf scharf schalten?")
+            .setMessage(
+                "${p.name} wird automatisch und ohne Rückfrage bestellt, sobald der Preis bei " +
+                    "höchstens ${money(minOf(target, cap))} liegt. Zeigt die Bestellseite einen " +
+                    "Gesamtbetrag über ${money(cap)}, wird abgebrochen; ist er nicht lesbar, wird " +
+                    "trotzdem bestellt.\n\n" +
+                    "• Menge 1, über „Jetzt kaufen“ (der übrige Warenkorb wird nicht mitbestellt)\n" +
+                    "• Standard-Lieferadresse und -Zahlungsart deines Amazon-Kontos\n" +
+                    "• Nur EIN Versuch, danach schaltet sich Auto-Kauf für dieses Produkt aus\n\n" +
+                    "Teste vorher den Probelauf."
+            )
+            .setPositiveButton("Scharf schalten") { _, _ ->
+                Store.update(this, p.asin) { it.autoBuy = true }
+                toast("Auto-Kauf für ${p.name} ist scharf.")
+                refresh()
+            }
+            .setNegativeButton("Abbrechen", null)
+            .show()
+    }
+
     private fun refresh() {
         statusView.text = "Status: " + Store.status(this)
         listBox.removeAllViews()
@@ -290,10 +353,37 @@ class MainActivity : AppCompatActivity() {
                     refresh()
                 }
             }
+            val arm = Button(this).apply {
+                text = if (p.autoBuy) "Auto-Kauf entschärfen" else "Auto-Kauf scharf schalten"
+                setOnClickListener { toggleAutoBuy(p) }
+            }
+            val dry = Button(this).apply {
+                text = "Auto-Kauf Probelauf (bestellt nicht)"
+                setOnClickListener {
+                    val cap = Store.autoBuyCap(this@MainActivity)
+                    if (cap <= 0.0) {
+                        toast("Bitte zuerst unter Einstellungen einen Auto-Kauf-Höchstbetrag eintragen und speichern.")
+                        return@setOnClickListener
+                    }
+                    isEnabled = false
+                    toast("Probelauf läuft, bitte bis zu 2 Minuten warten … Es wird nichts bestellt.")
+                    CoroutineScope(Dispatchers.Main).launch {
+                        val res = try {
+                            AutoBuyer.buy(this@MainActivity, Store.domain(this@MainActivity), p.asin, cap, dryRun = true)
+                        } catch (e: Exception) {
+                            AutoBuyer.Result(AutoBuyer.Outcome.FAILED, e.message ?: "Fehler")
+                        }
+                        isEnabled = true
+                        toast(AutoBuyer.describe(res))
+                    }
+                }
+            }
             row.addView(info)
             row.addView(cart)
             row.addView(cartTest)
             row.addView(checkout)
+            row.addView(arm)
+            row.addView(dry)
             row.addView(del)
             listBox.addView(row)
         }
