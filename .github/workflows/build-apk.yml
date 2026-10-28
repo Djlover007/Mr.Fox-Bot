@@ -45,9 +45,9 @@ jobs:
           set -o pipefail
           if ! gradle assembleDebug --no-daemon 2>&1 | tee build.log; then
             # Compiler-Fehler als Hinweise ausgeben (sichtbar in der Zusammenfassung des Laufs)
-            grep -E "^e: |What went wrong|> Could not|AAR metadata|requires" build.log | head -40 | while IFS= read -r line; do
-              echo "::error::${line//%/%25}"
-            done
+            # Alle Fehler in EINEM Hinweis (GitHub zeigt nur 10 Hinweise pro Schritt)
+            msg=$(grep -E "^e: |What went wrong|> Could not|AAR metadata|requires|Dependency" build.log | sed 's|file:///home/runner/work/[^ ]*/java/de/amazonmonitor/||' | head -60 | sed 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error::$msg"
             exit 1
           fi
 
