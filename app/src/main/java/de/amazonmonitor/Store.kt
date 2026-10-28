@@ -178,10 +178,7 @@ object Store {
     }
 
     /** Hauptschalter für Auto-Kauf. Ohne ihn bestellt die App nie selbst, auch wenn Produkte scharf sind. */
-    fun autoBuyEnabled(c: Context): Boolean = prefs(c).getBoolean("autobuy", false) && autoBuyCap(c) > 0.0
-
-    /** Höchster Gesamtbetrag (inkl. Versand) pro automatischer Bestellung. 0 = Auto-Kauf aus. */
-    fun autoBuyCap(c: Context): Double = prefs(c).getFloat("autobuy_cap", 0f).toDouble()
+    fun autoBuyEnabled(c: Context): Boolean = prefs(c).getBoolean("autobuy", false)
 
     /** Bei Alarm Amazon-Seite automatisch öffnen. */
     fun openOnAlert(c: Context): Boolean = prefs(c).getBoolean("open_on_alert", false)
@@ -200,10 +197,10 @@ object Store {
             .apply()
     }
 
-    fun saveAutoBuy(c: Context, enabled: Boolean, cap: Double) {
+    fun saveAutoBuy(c: Context, enabled: Boolean) {
         prefs(c).edit()
             .putBoolean("autobuy", enabled)
-            .putFloat("autobuy_cap", cap.toFloat())
+            .remove("autobuy_cap")
             .apply()
     }
 

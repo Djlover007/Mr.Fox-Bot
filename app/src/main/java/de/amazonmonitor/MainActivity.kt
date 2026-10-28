@@ -173,13 +173,7 @@ class MainActivity : AppCompatActivity() {
                 "(Standard-Adresse und -Zahlungsart)"
             isChecked = Store.autoBuyEnabled(this@MainActivity)
         }
-        val inCap = edit(
-            "Auto-Kauf: max. Gesamtbetrag pro Bestellung in € (inkl. Versand)",
-            InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL,
-            Store.autoBuyCap(this).let { if (it > 0) it.toString() else "" }
-        )
         root.addView(cbBuy)
-        root.addView(inCap)
 
         // --- Fenster
         root.addView(label("Fenster"))
@@ -217,18 +211,11 @@ class MainActivity : AppCompatActivity() {
             val interval = (inInterval.text.toString().toIntOrNull() ?: 60).coerceAtLeast(15)
             val drop = inDrop.text.toString().toIntOrNull() ?: 10
             Store.saveSettings(this, domain, interval, drop, inWebhook.text.toString().trim(), cbCart.isChecked)
-            val cap = inCap.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.0
-            if (cbBuy.isChecked && cap <= 0.0) {
-                cbBuy.isChecked = false
-                Store.saveAutoBuy(this, false, 0.0)
-                toast("Auto-Kauf bleibt aus: bitte einen Höchstbetrag eintragen.")
-            } else {
-                Store.saveAutoBuy(this, cbBuy.isChecked, cap)
-                toast(
-                    "Überwachung läuft alle $interval Minuten." +
-                        if (cbBuy.isChecked) " Auto-Kauf aktiv, Limit ${money(cap)}." else ""
-                )
-            }
+            Store.saveAutoBuy(this, cbBuy.isChecked)
+            toast(
+                "Überwachung läuft alle $interval Minuten." +
+                    if (cbBuy.isChecked) " Auto-Kauf erlaubt." else ""
+            )
             schedule(interval, update = true)
             refresh()
         })
@@ -383,17 +370,14 @@ class MainActivity : AppCompatActivity() {
             return
         }
         if (!Store.autoBuyEnabled(this)) {
-            toast("Erst unter Einstellungen „Auto-Kauf erlauben“ ankreuzen, Höchstbetrag eintragen und speichern.")
+            toast("Erst unter Einstellungen „Auto-Kauf erlauben“ ankreuzen und speichern.")
             return
         }
-        val cap = Store.autoBuyCap(this)
         AlertDialog.Builder(this)
             .setTitle("Auto-Kauf scharf schalten?")
             .setMessage(
                 "${p.name} wird automatisch und ohne Rückfrage bestellt, sobald der Preis bei " +
-                    "höchstens ${money(minOf(target, cap))} liegt. Zeigt die Bestellseite einen " +
-                    "Gesamtbetrag über ${money(cap)}, wird abgebrochen; ist er nicht lesbar, wird " +
-                    "trotzdem bestellt.\n\n" +
+                    "höchstens ${money(target)} liegt (Versandkosten kommen ggf. dazu).\n\n" +
                     "• Menge 1, über „Jetzt kaufen“ (der übrige Warenkorb wird nicht mitbestellt)\n" +
                     "• Standard-Lieferadresse und -Zahlungsart deines Amazon-Kontos\n" +
                     "• Nur EIN Versuch, danach schaltet sich Auto-Kauf für dieses Produkt aus\n\n" +
@@ -476,17 +460,12 @@ class MainActivity : AppCompatActivity() {
             val dry = Button(this).apply {
                 text = "Auto-Kauf Probelauf (bestellt nicht)"
                 setOnClickListener {
-                    val cap = Store.autoBuyCap(this@MainActivity)
-                    if (cap <= 0.0) {
-                        toast("Bitte zuerst unter Einstellungen einen Auto-Kauf-Höchstbetrag eintragen und speichern.")
-                        return@setOnClickListener
-                    }
                     isEnabled = false
                     toast("Probelauf läuft, bitte bis zu 2 Minuten warten … Es wird nichts bestellt.")
                     CoroutineScope(Dispatchers.Main).launch {
                         val res = try {
                             AutoBuyer.buy(
-                                this@MainActivity, Store.domain(this@MainActivity), p.asin, cap,
+                                this@MainActivity, Store.domain(this@MainActivity), p.asin,
                                 dryRun = true, visible = Store.watchBuy(this@MainActivity)
                             )
                         } catch (e: Exception) {

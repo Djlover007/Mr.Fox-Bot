@@ -16,7 +16,7 @@ wieder verfügbar).
 - Optional: Artikel bei Alarm automatisch in den Warenkorb legen (Testbutton pro Produkt)
 - „Zur Kasse“ öffnet nur den Bezahlvorgang, das endgültige „Jetzt kaufen“ tippst du selbst
 - Optional: **Auto-Kauf** – bestellt ein Produkt selbstständig, sobald der Zielpreis erreicht ist
-  (mit Höchstbetrag, Probelauf und nur einem Versuch, siehe unten)
+  (mit Probelauf und nur einem Versuch, siehe unten)
 
 ## OfferListingId (Angebot / Verkäufer)
 - Bei jeder Prüfung liest die App die **OfferListingId** und den Verkäufer des Angebots in der Kaufbox aus.
@@ -49,8 +49,7 @@ Bildschirm (wie ein Wecker), und der Auto-Kauf im Hintergrund läuft unsichtbar.
 ## Auto-Kauf
 Einrichten:
 1. Unter „Amazon-Zugang“ E-Mail und Passwort speichern – die App meldet sich dann selbst an.
-2. Unter Einstellungen „Auto-Kauf erlauben“ ankreuzen, einen **Höchstbetrag pro Bestellung
-   (inkl. Versand)** eintragen und speichern. Ohne Höchstbetrag bleibt Auto-Kauf aus.
+2. Unter Einstellungen „Auto-Kauf erlauben“ ankreuzen und speichern.
 3. Produkt mit Zielpreis anlegen, dann **„Auto-Kauf Probelauf“** drücken. Der Probelauf geht über
    „Jetzt kaufen“ bis zur Bestellseite, sucht den Bestellknopf und den Gesamtbetrag und meldet
    das Ergebnis – bestellt aber nichts. Nur wenn der Probelauf den Bestellknopf findet, funktioniert
@@ -59,9 +58,9 @@ Einrichten:
 
 Sicherungen:
 - Bestellt wird nur, wenn der Hauptschalter an ist, das Produkt scharf ist, Amazon es als verfügbar
-  zeigt und der Preis ≤ Zielpreis und ≤ Höchstbetrag ist.
-- Zeigt die Bestellseite einen Gesamtbetrag über dem Höchstbetrag, wird abgebrochen. Ist der
-  Gesamtbetrag nicht lesbar, wird trotzdem bestellt (Versandkosten sind dann nicht geprüft).
+  zeigt und der Preis ≤ Zielpreis ist.
+- Es gibt keinen Höchstbetrag für die Bestellung: Versandkosten werden nicht geprüft, der
+  Gesamtbetrag auf der Bestellseite wird nur zur Info gelesen.
 - Gekauft wird über „Jetzt kaufen“ (Menge 1), nicht über den Warenkorb – andere Artikel im Warenkorb
   werden also nicht mitbestellt.
 - Pro Scharfschalten **genau ein Versuch**: Die App schaltet Auto-Kauf vor dem Versuch aus, egal ob

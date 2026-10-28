@@ -104,7 +104,6 @@ object Checker {
 
     private suspend fun handle(ctx: Context, domain: String, dropPct: Int, asin: String, r: Scraper.Result) {
         val autoBuyOn = Store.autoBuyEnabled(ctx)
-        val cap = Store.autoBuyCap(ctx)
         var offerEvent: String? = null
         val upd = Store.update(ctx, asin) { p ->
             val prevOffer = p.offerId
@@ -146,11 +145,11 @@ object Checker {
                 if (text != null) p.lastAlertPrice = price
             }
 
-            // Auto-Kauf: nur wenn Hauptschalter an, Produkt scharf, verfügbar und Preis ≤ Ziel und ≤ Limit.
+            // Auto-Kauf: nur wenn Hauptschalter an, Produkt scharf, verfügbar und Preis ≤ Zielpreis.
             // Wird hier (atomar) sofort entschärft, damit höchstens EIN Kaufversuch passiert.
             val t = p.target
             val priceOk = autoBuyOn && p.autoBuy && nowAvail == true &&
-                price != null && t != null && price <= t && price <= cap
+                price != null && t != null && price <= t
             // Festgehaltenes Angebot: nur kaufen, wenn genau dieses in der Kaufbox liegt.
             // Sonst bleibt Auto-Kauf scharf und wartet auf die nächste Prüfung.
             val pin = p.pinnedOffer
@@ -195,7 +194,7 @@ object Checker {
             if (buyNow) {
                 val visible = Store.watchBuy(ctx) && Links.canOpenFromBackground(ctx)
                 val res = try {
-                    AutoBuyer.buy(ctx, domain, asin, cap, dryRun = false, visible = visible)
+                    AutoBuyer.buy(ctx, domain, asin, dryRun = false, visible = visible)
                 } catch (e: Exception) {
                     AutoBuyer.Result(AutoBuyer.Outcome.FAILED, e.message ?: "Fehler")
                 }

@@ -22,8 +22,8 @@ import kotlin.coroutines.resume
  * damit nie andere Artikel aus dem Warenkorb mitbestellt werden).
  *
  * Ablauf: Produktseite → „Jetzt kaufen“ → Bestellseite (oder Schnellkauf-Fenster) →
- * Gesamtbetrag lesen (falls lesbar und > [maxTotal]: abbrechen; nicht lesbar: trotzdem weiter) →
- * „Jetzt kaufen“/„Bestellung aufgeben“ drücken → auf die Bestätigungsseite warten.
+ * Gesamtbetrag lesen (nur zur Info) → „Jetzt kaufen“/„Bestellung aufgeben“ drücken →
+ * auf die Bestätigungsseite warten.
  *
  * Bei [dryRun] = true wird alles bis zur Bestellseite durchlaufen und der Gesamtbetrag gemeldet,
  * aber NICHT bestellt.
@@ -145,14 +145,14 @@ function hintOf(d){
      * das Fenster nicht zu (App im Hintergrund ohne „Über anderen Apps einblenden“), läuft es unsichtbar.
      */
     suspend fun buy(
-        ctx: Context, domain: String, asin: String, maxTotal: Double, dryRun: Boolean, visible: Boolean = false
+        ctx: Context, domain: String, asin: String, dryRun: Boolean, visible: Boolean = false
     ): Result =
         mutex.withLock {
             withContext(Dispatchers.Main) {
                 val watch = if (visible) WatchActivity.open(ctx) else null
                 var placed = false
                 val r = withTimeoutOrNull(120_000L) {
-                    execute(ctx, watch, domain, asin, maxTotal, dryRun) { placed = true }
+                    execute(ctx, watch, domain, asin, dryRun) { placed = true }
                 } ?: if (placed) {
                     Result(Outcome.UNCLEAR, "Zeitüberschreitung nach dem Klick auf „Bestellen“")
                 } else {
@@ -165,7 +165,7 @@ function hintOf(d){
 
     @SuppressLint("SetJavaScriptEnabled")
     private suspend fun execute(
-        ctx: Context, watch: WatchActivity?, domain: String, asin: String, maxTotal: Double, dryRun: Boolean,
+        ctx: Context, watch: WatchActivity?, domain: String, asin: String, dryRun: Boolean,
         onPlaced: () -> Unit
     ): Result = suspendCancellableCoroutine { cont ->
         // Sichtbares Fenster: dessen WebView benutzen (bleibt nach dem Ende offen). Sonst eine unsichtbare.
@@ -281,15 +281,11 @@ function hintOf(d){
                             if (stage == 1) {
                                 val t = if (o.optString("s") == "ready") Scraper.parsePrice(o.optString("total")) else null
                                 if (t == null) noTotal++
-                                // Ohne lesbaren Gesamtbetrag ein paar Sekunden warten (Seite lädt evtl. noch),
-                                // dann trotzdem bestellen. Das Limit wurde vorher schon am Produktpreis geprüft.
-                                val proceed = t != null || noTotal >= 4
+                                // Der Gesamtbetrag ist nur noch zur Info (kein Höchstbetrag mehr).
+                                // Echter Kauf: sofort bestellen. Probelauf: kurz warten, ob er lesbar wird.
+                                val proceed = t != null || !dryRun || noTotal >= 4
                                 when {
                                     !proceed -> {}
-                                    t != null && t > maxTotal -> {
-                                        done(Result(Outcome.ABORTED, "Gesamtbetrag ${money(t)} über Limit ${money(maxTotal)} – nicht bestellt", t))
-                                        return@evaluateJavascript
-                                    }
                                     dryRun -> {
                                         val hint = o.optString("hint")
                                         val info = if (t != null) "Gesamtbetrag ${money(t)}"
