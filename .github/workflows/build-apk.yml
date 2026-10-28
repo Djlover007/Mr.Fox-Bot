@@ -41,7 +41,15 @@ jobs:
           SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
-        run: gradle assembleDebug --no-daemon
+        run: |
+          set -o pipefail
+          if ! gradle assembleDebug --no-daemon 2>&1 | tee build.log; then
+            # Compiler-Fehler als Hinweise ausgeben (sichtbar in der Zusammenfassung des Laufs)
+            grep -E "^e: |What went wrong|> Could not|AAR metadata|requires" build.log | head -40 | while IFS= read -r line; do
+              echo "::error::${line//%/%25}"
+            done
+            exit 1
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
