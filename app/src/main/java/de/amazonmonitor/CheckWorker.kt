@@ -235,9 +235,21 @@ object Checker {
             // PAYBACK: Auf dem Handy nur über die Payback-App möglich → Knopf in der Benachrichtigung.
             val shopKey = product?.shop ?: Product.SHOP_AMAZON
             val payback = Store.payback(ctx, shopKey) && Payback.supports(shopKey)
-            if (payback && buyNow) message += "\n💳 Auto-Kauf läuft ohne Payback-Punkte (Payback erlaubt das nur in der Payback-App)"
+            // Auto-Kauf über Payback (nur Amazon, über die Amazon-App per Bedienungshilfe)
+            val pbWhy = if (buyNow && ws == null && Store.paybackAutoBuy(ctx)) PaybackClicker.whyNotBuy(ctx) else "aus"
+            val viaPayback = buyNow && ws == null && Store.paybackAutoBuy(ctx) && pbWhy == null
+            if (payback && buyNow && !viaPayback) {
+                message += "\n💳 Auto-Kauf ohne Payback-Punkte" +
+                    (if (Store.paybackAutoBuy(ctx) && ws == null) " ($pbWhy)" else "")
+            }
 
-            if (buyNow) {
+            if (viaPayback) {
+                PaybackClicker.startBuy(ctx, asin, name, dryRun = false)
+                val line = "💳 Auto-Kauf über Payback gestartet (Payback → Amazon-App) – das Ergebnis kommt als eigene Meldung"
+                Store.update(ctx, asin) { it.lastBuyResult = line }
+                message += "\n$line"
+                openUrl = null
+            } else if (buyNow) {
                 val visible = Store.watchBuy(ctx) && Links.canOpenFromBackground(ctx)
                 val res = try {
                     if (ws != null) ShopBuyer.buy(ctx, ws, url, asin, dryRun = false, visible = visible)
@@ -344,6 +356,10 @@ object Checker {
         }
         sendDiscord(hook, buf.toString())
     }
+
+    /** Einfache Benachrichtigung (z. B. Ergebnis des Auto-Kaufs über Payback). */
+    fun notifyResult(ctx: Context, title: String, text: String, url: String) =
+        notifyUser(ctx, title, text, url, url, url)
 
     /**
      * Link, der den Artikel in den Warenkorb legt (du bestellst danach selbst).

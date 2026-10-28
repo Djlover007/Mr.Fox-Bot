@@ -63,6 +63,16 @@ object Payback {
         }
     }
 
+    /** Payback-App für den Auto-Kauf öffnen (die Bedienungshilfe ist schon im Kauf-Modus scharf). */
+    fun openForBuy(ctx: Context, shopKey: String) {
+        val url = shopPage(shopKey) ?: return
+        try {
+            ctx.startActivity(viewIntent(ctx, url).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) {
+            // Wächter in PaybackClicker greift (Zeitüberschreitung → normaler Auto-Kauf)
+        }
+    }
+
     /** Für den Knopf in der Benachrichtigung (über [LaunchActivity], damit der Name kopiert wird). */
     fun pending(ctx: Context, shopKey: String, productName: String, requestCode: Int): PendingIntent =
         PendingIntent.getActivity(

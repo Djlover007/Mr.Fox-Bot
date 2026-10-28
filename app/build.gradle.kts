@@ -11,8 +11,8 @@ android {
         applicationId = "de.amazonmonitor"
         minSdk = 26
         targetSdk = 34
-        versionCode = 23
-        versionName = "3.2"
+        versionCode = 24
+        versionName = "3.3"
     }
 
     // Fester Signaturschlüssel aus GitHub-Secrets (siehe README). Ohne Secrets wird wie bisher

@@ -426,6 +426,16 @@ class MainActivity : AppCompatActivity() {
                 Payback.open(this, key, null)
             }.apply { textSize = 12f })
         }
+        root.addView(CheckBox(this).apply {
+            text = "Auto-Kauf bei Amazon über Payback erledigen (Payback → Amazon-App, nur bei entsperrtem " +
+                "Handy und eingeschalteter Payback-Automatik; sonst normaler Auto-Kauf ohne °Punkte)"
+            isChecked = Store.paybackAutoBuy(this@MainActivity)
+            setOnCheckedChangeListener { _, on ->
+                Store.savePaybackAutoBuy(this@MainActivity, on)
+                if (on) PaybackClicker.whyNotBuy(this@MainActivity)?.let { toast("Hinweis: $it") }
+                refresh()
+            }
+        })
 
         root.addView(button("Jetzt prüfen") {
             val req = OneTimeWorkRequestBuilder<CheckWorker>().addTag(CheckWorker.TAG_NOW).build()
@@ -702,6 +712,17 @@ class MainActivity : AppCompatActivity() {
         // Von Hand über Payback kaufen: Payback-App öffnen, Produktname liegt in der Zwischenablage.
         if (Payback.supports(p.shop) && Store.payback(this, p.shop)) {
             row.addView(smallButton("💳 Über Payback kaufen") { Payback.open(this, p.shop, p.name) })
+            if (!p.isWebShop && Store.paybackAutoBuy(this)) {
+                row.addView(smallButton("💳 Probelauf über Payback (bestellt nicht)") {
+                    val why = PaybackClicker.whyNotBuy(this)
+                    if (why != null) {
+                        toast("Geht gerade nicht: $why")
+                        return@smallButton
+                    }
+                    toast("Probelauf über Payback startet – Handy nicht anfassen, Ergebnis kommt als Meldung.")
+                    PaybackClicker.startBuy(this, p.asin, p.name, dryRun = true)
+                })
+            }
         }
         row.addView(Button(this).apply {
             text = "Automatisch in Warenkorb (Test)"

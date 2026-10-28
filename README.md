@@ -82,7 +82,15 @@ Einstellungen zulassen“). Danach drückt sie nach „Über Payback kaufen“ i
 Cookie-Hinweis („Alle akzeptieren“ – ohne Cookies keine °Punkte). Sie wird nur in den 90 Sekunden nach
 dem Tippen in Mr.Fox Bot aktiv und schaltet sich nach dem Cookie-Hinweis sofort ab.
 
-Der **Auto-Kauf** läuft unabhängig davon ohne Payback, also ohne °Punkte. Müller ist kein Payback-Partner.
+**Auto-Kauf über Payback (nur Amazon):** Haken „Auto-Kauf bei Amazon über Payback erledigen“. Löst der
+Auto-Kauf aus und ist das Handy **entsperrt**, erledigt die Payback-Automatik alles: Payback → „Zur
+Amazon-App“ → „Verstanden“ → Cookies → in der Amazon-App die ASIN suchen → Produkt → „Jetzt kaufen“
+→ Schutzangebote ablehnen → bestellen → Bestätigung. Das Ergebnis kommt als eigene Meldung.
+Ist das Handy gesperrt (oder fehlt etwas), läuft der normale Auto-Kauf ohne °Punkte. Hängt der
+Payback-Weg vor dem Bestellen (max. 3 Min.), kauft die App ebenfalls normal. Erst mit
+„💳 Probelauf über Payback“ testen (hält vor dem Bestellen an, Handy dabei nicht anfassen).
+
+Ohne diesen Haken läuft der **Auto-Kauf** ohne Payback, also ohne °Punkte. Müller ist kein Payback-Partner.
 
 ## OfferListingId (Angebot / Verkäufer)
 - Bei jeder Prüfung liest die App die **OfferListingId** und den Verkäufer des Angebots in der Kaufbox aus.
