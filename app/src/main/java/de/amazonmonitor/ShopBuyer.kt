@@ -13,25 +13,25 @@ import org.json.JSONObject
 import kotlin.coroutines.resume
 
 /**
- * Müller: in den Warenkorb legen und automatisch bestellen.
+ * Web-Shops (Müller, MediaMarkt …): in den Warenkorb legen und automatisch bestellen.
  *
- * Ablauf: Produktseite → „In den Warenkorb“ → Warenkorb (/cart/) → „Zur Kasse“ → ggf. Anmeldung
- * mit dem gespeicherten Müller-Zugang → „Weiter“-Schritte mit den voreingestellten Angaben →
- * „Zahlungspflichtig bestellen“ → Bestätigung abwarten.
+ * Ablauf: Produktseite → „In den Warenkorb“ → Warenkorb → „Zur Kasse“ → ggf. Anmeldung mit dem
+ * gespeicherten Zugang des Shops → „Weiter“-Schritte mit den voreingestellten Angaben →
+ * „Zahlungspflichtig bestellen“/„Jetzt kaufen“ → Bestätigung abwarten.
  *
- * Achtung: Bei Müller wird – anders als bei Amazons „Jetzt kaufen“ – der GANZE Warenkorb bestellt.
- * Die Knöpfe werden über ihre Beschriftung gefunden, weil Müller keine festen Kennungen anbietet.
+ * Achtung: Hier wird – anders als bei Amazons „Jetzt kaufen“ – der GANZE Warenkorb des Shops bestellt.
+ * Die Knöpfe werden über ihre Beschriftung gefunden, weil die Shops keine festen Kennungen anbieten.
  */
-object MuellerBuyer {
+object ShopBuyer {
     private enum class Mode { CART, BUY, DRY }
 
     private val mutex = Mutex()
 
-    private val C = Mueller.COMMON_JS
+    private val C = WebShops.COMMON_JS
 
-    private val ADD_JS = "(function(){" + C +
+    private fun addJs(shop: WebShop) = "(function(){" + C +
         "if(security())return 'security';if(!document.querySelector('h1'))return 'wait';" +
-        "var b=btn(/^in den warenkorb${'$'}/i);if(b){b.click();return 'clicked';}return 'none';})()"
+        "var b=btn(new RegExp(${JSONObject.quote(shop.addButtonRe)},'i'));if(b){b.click();return 'clicked';}return 'none';})()"
 
     private val ADDED_JS = "(function(){" + C +
         "var b=(document.body&&document.body.innerText)||'';" +
@@ -46,7 +46,7 @@ object MuellerBuyer {
         "if(security())return JSON.stringify({s:'security'});" +
         "var body=(document.body&&document.body.innerText)||'';var h=location.href.toLowerCase();" +
         "var pw=document.querySelector('input[type=password]');if(pw&&vis(pw))return JSON.stringify({s:'login'});" +
-        "var f=btn(/zahlungspflichtig bestellen|kostenpflichtig bestellen|jetzt kaufen|bestellung absenden|jetzt bestellen/i,/einkaufen/i);" +
+        "var f=btn(/zahlungspflichtig bestellen|kostenpflichtig bestellen|zahlungspflichtig kaufen|jetzt kaufen|^kaufen${'$'}|kaufen und bezahlen|bestellung absenden|jetzt bestellen/i,/einkaufen/i);" +
         "if(f)return JSON.stringify({s:'final',total:findTotal(document)||'',label:txt(f),hint:hintOf(document)});" +
         "if(/vielen dank für (ihre|deine) bestellung|(ihre|deine) bestellnummer|bestellung ist eingegangen/i.test(body)" +
         "||/success|danke|thank/.test(h))return JSON.stringify({s:'done'});" +
@@ -71,9 +71,9 @@ object MuellerBuyer {
         "if(!b&&p&&p.form){b=p.form.querySelector('button[type=submit],input[type=submit]');}" +
         "if(b){b.click();return 'clicked';}return 'nobutton';})()"
 
-    /** Legt das Produkt in den Müller-Warenkorb. */
-    suspend fun addToCart(ctx: Context, url: String, productId: String): CartAdder.Result {
-        val r = run(ctx, url, productId, Mode.CART, visible = false)
+    /** Legt das Produkt in den Warenkorb des Shops. */
+    suspend fun addToCart(ctx: Context, shop: WebShop, url: String, productId: String): CartAdder.Result {
+        val r = run(ctx, shop, url, productId, Mode.CART, visible = false)
         CartAdder.lastDetail = r.detail
         return when (r.outcome) {
             AutoBuyer.Outcome.DRY_RUN_OK -> CartAdder.Result.OK
@@ -83,17 +83,17 @@ object MuellerBuyer {
     }
 
     /** Auto-Kauf bzw. Probelauf ([dryRun]: bis zum Bestellknopf, ohne zu bestellen). */
-    suspend fun buy(ctx: Context, url: String, productId: String, dryRun: Boolean, visible: Boolean): AutoBuyer.Result =
-        run(ctx, url, productId, if (dryRun) Mode.DRY else Mode.BUY, visible)
+    suspend fun buy(ctx: Context, shop: WebShop, url: String, productId: String, dryRun: Boolean, visible: Boolean): AutoBuyer.Result =
+        run(ctx, shop, url, productId, if (dryRun) Mode.DRY else Mode.BUY, visible)
 
-    private suspend fun run(ctx: Context, url: String, productId: String, mode: Mode, visible: Boolean): AutoBuyer.Result =
+    private suspend fun run(ctx: Context, shop: WebShop, url: String, productId: String, mode: Mode, visible: Boolean): AutoBuyer.Result =
         mutex.withLock {
             withContext(Dispatchers.Main) {
                 val watch = if (visible) WatchActivity.open(ctx) else null
-                watch?.let { Mueller.setup(ctx, it.web) }
+                watch?.let { WebShops.setup(ctx, it.web) }
                 var placed = false
                 val r = withTimeoutOrNull(180_000L) {
-                    execute(ctx, watch, url, productId, mode) { placed = true }
+                    execute(ctx, shop, watch, url, productId, mode) { placed = true }
                 } ?: if (placed) {
                     AutoBuyer.Result(AutoBuyer.Outcome.UNCLEAR, "Zeitüberschreitung nach dem Klick auf „Bestellen“")
                 } else {
@@ -105,16 +105,16 @@ object MuellerBuyer {
         }
 
     private suspend fun execute(
-        ctx: Context, watch: WatchActivity?, url: String, productId: String, mode: Mode, onPlaced: () -> Unit
+        ctx: Context, shop: WebShop, watch: WatchActivity?, url: String, productId: String, mode: Mode, onPlaced: () -> Unit
     ): AutoBuyer.Result = suspendCancellableCoroutine { cont ->
         val owned = watch == null
-        val web = watch?.web ?: Mueller.hiddenWebView(ctx)
+        val web = watch?.web ?: WebShops.hiddenWebView(ctx)
         val handler = Handler(Looper.getMainLooper())
-        val article = Mueller.articleNumber(productId)
+        val article = WebShops.articleNumber(productId)
         val prefix = when (mode) {
-            Mode.DRY -> "Müller-Probelauf: "
-            Mode.BUY -> "Müller-Auto-Kauf: "
-            Mode.CART -> "Müller-Warenkorb: "
+            Mode.DRY -> "${shop.label}-Probelauf: "
+            Mode.BUY -> "${shop.label}-Auto-Kauf: "
+            Mode.CART -> "${shop.label}-Warenkorb: "
         }
         fun status(s: String) = watch?.setStatus(prefix + s)
 
@@ -162,7 +162,7 @@ object MuellerBuyer {
                 if (!cont.isActive) return
                 polls++
                 when (stage) {
-                    0 -> web.evaluateJavascript(ADD_JS) { raw ->
+                    0 -> web.evaluateJavascript(addJs(shop)) { raw ->
                         if (!cont.isActive) return@evaluateJavascript
                         last = raw?.trim('"') ?: ""
                         when {
@@ -176,8 +176,8 @@ object MuellerBuyer {
                             }
                             polls >= 25 -> {
                                 done(
-                                    if (last == "security") AutoBuyer.Result(AutoBuyer.Outcome.BLOCKED, "Müller-Sicherheitsprüfung nicht bestanden")
-                                    else AutoBuyer.Result(AutoBuyer.Outcome.FAILED, "Müller-Produktseite nicht erkannt")
+                                    if (last == "security") AutoBuyer.Result(AutoBuyer.Outcome.BLOCKED, "${shop.label}: Bot-/Sicherheitsprüfung nicht bestanden")
+                                    else AutoBuyer.Result(AutoBuyer.Outcome.FAILED, "${shop.label}-Produktseite nicht erkannt")
                                 )
                                 return@evaluateJavascript
                             }
@@ -189,12 +189,12 @@ object MuellerBuyer {
                         if (!cont.isActive) return@evaluateJavascript
                         val ok = raw?.contains("ok") == true
                         if (ok && mode == Mode.CART) {
-                            done(AutoBuyer.Result(AutoBuyer.Outcome.DRY_RUN_OK, "In den Müller-Warenkorb gelegt"))
+                            done(AutoBuyer.Result(AutoBuyer.Outcome.DRY_RUN_OK, "In den ${shop.label}-Warenkorb gelegt"))
                             return@evaluateJavascript
                         }
                         if (ok || polls >= 6) {
                             status("Öffne Warenkorb …")
-                            web.loadUrl(Mueller.CART_URL)
+                            web.loadUrl(shop.cartUrl)
                             nextStage(2)
                         }
                         again()
@@ -205,11 +205,11 @@ object MuellerBuyer {
                         val yes = raw?.contains("yes") == true
                         when {
                             yes && mode == Mode.CART -> {
-                                done(AutoBuyer.Result(AutoBuyer.Outcome.DRY_RUN_OK, "Im Müller-Warenkorb"))
+                                done(AutoBuyer.Result(AutoBuyer.Outcome.DRY_RUN_OK, "Im ${shop.label}-Warenkorb"))
                                 return@evaluateJavascript
                             }
                             !yes && polls >= 8 && mode == Mode.CART -> {
-                                done(AutoBuyer.Result(AutoBuyer.Outcome.FAILED, "Artikel nicht im Müller-Warenkorb gefunden"))
+                                done(AutoBuyer.Result(AutoBuyer.Outcome.FAILED, "Artikel nicht im ${shop.label}-Warenkorb gefunden"))
                                 return@evaluateJavascript
                             }
                             // Kauf: auch ohne sichere Erkennung weiter – die Kasse zeigt, was im Warenkorb liegt.
@@ -223,12 +223,12 @@ object MuellerBuyer {
 
                     3, 4 -> web.evaluateJavascript(STEP_JS) { raw ->
                         if (!cont.isActive) return@evaluateJavascript
-                        val o = Mueller.parseJs(raw)
+                        val o = WebShops.parseJs(raw)
                         val s = o.optString("s")
                         if (stage == 4) {
                             when {
                                 s == "done" -> {
-                                    done(AutoBuyer.Result(AutoBuyer.Outcome.ORDERED, "Bestellung bei Müller bestätigt", total))
+                                    done(AutoBuyer.Result(AutoBuyer.Outcome.ORDERED, "Bestellung bei ${shop.label} bestätigt", total))
                                     return@evaluateJavascript
                                 }
                                 polls >= 25 -> {
@@ -265,20 +265,20 @@ object MuellerBuyer {
                                 return@evaluateJavascript
                             }
                             "login" -> {
-                                val mail = Store.muellerEmail(ctx)
-                                val pw = Store.muellerPassword(ctx)
+                                val mail = Store.shopEmail(ctx, shop)
+                                val pw = Store.shopPassword(ctx, shop)
                                 when {
                                     mail.isEmpty() || pw == null -> {
-                                        done(AutoBuyer.Result(AutoBuyer.Outcome.NOT_LOGGED_IN, "Müller verlangt eine Anmeldung – Müller-Zugang in der App speichern"))
+                                        done(AutoBuyer.Result(AutoBuyer.Outcome.NOT_LOGGED_IN, "${shop.label} verlangt eine Anmeldung – ${shop.label}-Zugang in der App speichern"))
                                         return@evaluateJavascript
                                     }
                                     loginTries >= 2 -> {
-                                        done(AutoBuyer.Result(AutoBuyer.Outcome.NOT_LOGGED_IN, "Anmeldung bei Müller hat nicht geklappt (Passwort prüfen)"))
+                                        done(AutoBuyer.Result(AutoBuyer.Outcome.NOT_LOGGED_IN, "Anmeldung bei ${shop.label} hat nicht geklappt (Passwort prüfen)"))
                                         return@evaluateJavascript
                                     }
                                     else -> {
                                         loginTries++
-                                        status("Melde bei Müller an …")
+                                        status("Melde bei ${shop.label} an …")
                                         web.evaluateJavascript(loginJs(mail, pw), null)
                                         cooldown = 3
                                     }
@@ -287,7 +287,7 @@ object MuellerBuyer {
                             "click", "needlogin" -> {
                                 val label = o.optString("label")
                                 val n = clicks[label] ?: 0
-                                val canLogin = Store.hasMuellerLogin(ctx)
+                                val canLogin = Store.hasShopLogin(ctx, shop)
                                 if (n < 3 && stepClicks < 15 && (s == "click" || canLogin)) {
                                     clicks[label] = n + 1
                                     stepClicks++
@@ -299,7 +299,7 @@ object MuellerBuyer {
                         }
                         if (s == "wait" || s == "security") last = o.optString("title", s)
                         if (polls >= 60) {
-                            done(AutoBuyer.Result(AutoBuyer.Outcome.FAILED, "Müller-Kasse nicht durchlaufen (hängt bei: ${last.ifEmpty { s }})"))
+                            done(AutoBuyer.Result(AutoBuyer.Outcome.FAILED, "${shop.label}-Kasse nicht durchlaufen (hängt bei: ${last.ifEmpty { s }})"))
                             return@evaluateJavascript
                         }
                         again()

@@ -1,6 +1,6 @@
 # Mr.Fox Bot (Android)
 
-Überwacht **Amazon** und **Müller** (mueller.de).
+Überwacht **Amazon**, **Müller** (mueller.de) und **MediaMarkt** (mediamarkt.de).
 
 Android-App, die Preis und Verfügbarkeit von Amazon-Produkten im Hintergrund überwacht und dich
 per Benachrichtigung und optional per Discord informiert (Zielpreis erreicht, Preis um X % gefallen,
@@ -39,7 +39,17 @@ wieder verfügbar).
   Erst den Probelauf testen (am besten mit „sichtbarem Fenster“), er hält vor dem Bestellknopf an.
 - Die Müller-Knöpfe werden über ihre Beschriftung gefunden. Ändert Müller Texte oder Ablauf (oder
   verlangt die Zahlungsart eine Weiterleitung, z. B. PayPal), kann der Auto-Kauf hängen bleiben.
-- Die Liste lässt sich oben nach Sparte filtern: Alle / Amazon / Müller.
+- Die Liste lässt sich oben nach Sparte filtern: Alle / Amazon / Müller / MediaMarkt.
+
+## MediaMarkt (mediamarkt.de)
+Funktioniert wie Müller (gleicher Mechanismus, siehe oben):
+- **Produkt:** Link `mediamarkt.de/de/product/_…-1234567.html`
+- **Kategorie:** Link `mediamarkt.de/de/category/….html` (neu / wieder verfügbar / unter Zielpreis)
+- Eigener **MediaMarkt-Zugang** für Auto-Kauf; Warenkorb und Kasse unter `/checkout`.
+- MediaMarkt hat eine strenge Bot-Prüfung. Kommt die App nicht durch, meldet sie
+  „MediaMarkt: Bot-/Sicherheitsprüfung nicht bestanden“ – dann einmal über „Bei MediaMarkt in der
+  App anmelden“ die Seite öffnen und ggf. die Prüfung bestätigen.
+- Auch hier wird beim Auto-Kauf der **ganze MediaMarkt-Warenkorb** bestellt.
 
 ## OfferListingId (Angebot / Verkäufer)
 - Bei jeder Prüfung liest die App die **OfferListingId** und den Verkäufer des Angebots in der Kaufbox aus.
@@ -119,8 +129,8 @@ app/src/main/java/de/amazonmonitor/
     WebActivity.kt    Amazon-Fenster, Anmeldung, Zur-Kasse-Klick
     WatchActivity.kt  sichtbares Fenster für Probelauf/Auto-Kauf
     Links.kt          Links im App-Fenster oder in Chrome öffnen
-    Mueller.kt        Müller: Links erkennen, Produkt- und Kategorieseiten auslesen
-    MuellerBuyer.kt   Müller: Warenkorb und Auto-Kauf
+    Shops.kt          Web-Shops (Müller, MediaMarkt): Links erkennen, Produkt-/Kategorieseiten auslesen
+    ShopBuyer.kt      Web-Shops: Warenkorb und Auto-Kauf
 ```
 
 ## APK bauen und installieren

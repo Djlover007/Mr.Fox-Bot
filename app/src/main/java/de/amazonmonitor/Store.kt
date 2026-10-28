@@ -39,21 +39,23 @@ class Product(
     var pinnedSeller: String = "",
     /** Shop: [SHOP_AMAZON] oder [SHOP_MUELLER]. */
     val shop: String = SHOP_AMAZON,
-    /** [KIND_PRODUCT] oder [KIND_CATEGORY] (Kategorie-Überwachung, nur Müller). */
+    /** [KIND_PRODUCT] oder [KIND_CATEGORY] (Kategorie-Überwachung, nur Web-Shops). */
     val kind: String = KIND_PRODUCT,
-    /** Seiten-Link (bei Müller nötig; bei Amazon leer, dort wird er aus Domain + ASIN gebaut). */
+    /** Seiten-Link (bei Web-Shops nötig; bei Amazon leer, dort wird er aus Domain + ASIN gebaut). */
     val url: String = "",
     /** Kategorie: zuletzt gesehene Produkte als JSON {link: {n: Name, p: Preis, a: verfügbar}}. */
     var catState: String = "{}",
 ) {
-    val isMueller: Boolean get() = shop == SHOP_MUELLER
+    /** Web-Shop (Müller, MediaMarkt …) bzw. null für Amazon. */
+    val webShop: WebShop? get() = WebShops.byKey(shop)
+    val isWebShop: Boolean get() = shop != SHOP_AMAZON
     val isCategory: Boolean get() = kind == KIND_CATEGORY
 
     /** Angebot für den Warenkorb: festgehaltenes, sonst das zuletzt gesehene (nur Amazon). */
-    val cartOffer: String? get() = if (isMueller) null else pinnedOffer ?: offerId
+    val cartOffer: String? get() = if (isWebShop) null else pinnedOffer ?: offerId
 
     /** Produkt- bzw. Kategorieseite. */
-    fun pageUrl(amazonDomain: String): String = if (isMueller) url else "https://www.$amazonDomain/dp/$asin"
+    fun pageUrl(amazonDomain: String): String = if (isWebShop) url else "https://www.$amazonDomain/dp/$asin"
 
     fun toJson(): JSONObject = JSONObject()
         .put("shop", shop)
@@ -78,7 +80,7 @@ class Product(
         .put("lastCartAdd", lastCartAdd)
 
     fun describe(): String {
-        val sb = StringBuilder(if (isMueller) "🟠 " else "🟡 ").append(name).append("\n")
+        val sb = StringBuilder((webShop?.emoji ?: "🟡") + " ").append(name).append("\n")
         if (isCategory) {
             if (lastCheck == 0L) return sb.append("Kategorie – noch nicht geprüft").toString()
             val st = try { JSONObject(catState) } catch (e: Exception) { JSONObject() }
@@ -144,6 +146,7 @@ class Product(
 
         const val SHOP_AMAZON = "amazon"
         const val SHOP_MUELLER = "mueller"
+        const val SHOP_MEDIAMARKT = "mediamarkt"
         const val KIND_PRODUCT = "product"
         const val KIND_CATEGORY = "category"
 
@@ -258,21 +261,22 @@ object Store {
         prefs(c).edit().remove("amz_mail").remove("amz_pw").apply()
     }
 
-    // --- Müller-Zugang (Passwort ebenfalls verschlüsselt im Android-Tresor)
-    fun muellerEmail(c: Context): String = prefs(c).getString("mue_mail", "") ?: ""
+    // --- Zugang für Web-Shops (Müller, MediaMarkt …); Passwort verschlüsselt im Android-Tresor
+    fun shopEmail(c: Context, shop: WebShop): String = prefs(c).getString("${shop.credPrefix}_mail", "") ?: ""
 
-    fun hasMuellerLogin(c: Context): Boolean = prefs(c).getString("mue_pw", null) != null
+    fun hasShopLogin(c: Context, shop: WebShop): Boolean = prefs(c).getString("${shop.credPrefix}_pw", null) != null
 
-    fun muellerPassword(c: Context): String? = prefs(c).getString("mue_pw", null)?.let { Vault.decrypt(it) }
+    fun shopPassword(c: Context, shop: WebShop): String? =
+        prefs(c).getString("${shop.credPrefix}_pw", null)?.let { Vault.decrypt(it) }
 
-    fun saveMuellerLogin(c: Context, email: String, password: String?) {
-        val e = prefs(c).edit().putString("mue_mail", email)
-        if (password != null) e.putString("mue_pw", Vault.encrypt(password))
+    fun saveShopLogin(c: Context, shop: WebShop, email: String, password: String?) {
+        val e = prefs(c).edit().putString("${shop.credPrefix}_mail", email)
+        if (password != null) e.putString("${shop.credPrefix}_pw", Vault.encrypt(password))
         e.apply()
     }
 
-    fun clearMuellerLogin(c: Context) {
-        prefs(c).edit().remove("mue_mail").remove("mue_pw").apply()
+    fun clearShopLogin(c: Context, shop: WebShop) {
+        prefs(c).edit().remove("${shop.credPrefix}_mail").remove("${shop.credPrefix}_pw").apply()
     }
 
     fun status(c: Context): String = prefs(c).getString("status", "–") ?: "–"

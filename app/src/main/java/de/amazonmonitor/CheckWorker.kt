@@ -28,7 +28,7 @@ object Checker {
     private const val CHANNEL = "price_alerts"
 
     /**
-     * Prüft alle Produkte nacheinander (Amazon und Müller). Blockiert ein Shop (Captcha bzw.
+     * Prüft alle Produkte nacheinander (Amazon und Web-Shops). Blockiert ein Shop (Captcha bzw.
      * Sicherheitsprüfung), werden nur dessen restliche Produkte für diese Runde übersprungen.
      * Gibt true zurück, wenn ein Shop blockiert hat.
      */
@@ -45,7 +45,7 @@ object Checker {
                 checkProduct(ctx, domain, dropPct, p)
             } catch (e: Scraper.BlockedException) {
                 blockedShops += p.shop
-                problems += if (p.isMueller) "Müller: Sicherheitsprüfung nicht bestanden" else "Amazon: blockiert (Captcha)"
+                problems += p.webShop?.let { "${it.label}: Bot-/Sicherheitsprüfung nicht bestanden" } ?: "Amazon: blockiert (Captcha)"
             } catch (e: Exception) {
                 problems += "Fehler bei ${p.name}: ${e.message}"
             }
@@ -58,9 +58,10 @@ object Checker {
 
     /** Ein Produkt bzw. eine Kategorie je nach Shop abrufen und auswerten. */
     private suspend fun checkProduct(ctx: Context, domain: String, dropPct: Int, p: Product) {
+        val ws = p.webShop
         when {
-            p.isCategory -> handleCategory(ctx, p, Mueller.fetchCategory(ctx, p.url))
-            p.isMueller -> handle(ctx, domain, dropPct, p.asin, Mueller.fetchProduct(ctx, p.url))
+            ws != null && p.isCategory -> handleCategory(ctx, ws, p, WebShops.fetchCategory(ctx, ws, p.url))
+            ws != null -> handle(ctx, domain, dropPct, p.asin, WebShops.fetchProduct(ctx, ws, p.url))
             else -> handle(ctx, domain, dropPct, p.asin, Scraper.fetch(domain, p.asin))
         }
     }
@@ -81,13 +82,14 @@ object Checker {
 
     /** Text mit OfferListingId & Co. für Discord (ID in `…`, damit sie sich leicht kopieren lässt). */
     fun offerInfo(domain: String, p: Product): String {
-        if (p.isMueller) {
-            val sb = StringBuilder("Shop: Müller")
+        val ws = p.webShop
+        if (ws != null) {
+            val sb = StringBuilder("Shop: ${ws.label}")
             p.lastPrice?.let { sb.append("\nPreis: ").append(money(it)) }
             p.target?.let { sb.append("\nZielpreis: ").append(money(it)) }
             sb.append("\nVerfügbar: ").append(if (p.available) "ja" else "nein")
             sb.append("\nProdukt: <").append(p.url).append(">")
-            sb.append("\nWarenkorb: <").append(Mueller.CART_URL).append(">")
+            sb.append("\nWarenkorb: <").append(ws.cartUrl).append(">")
             return sb.toString()
         }
         val sb = StringBuilder()
@@ -202,10 +204,10 @@ object Checker {
             val product = Store.load(ctx).firstOrNull { it.asin == asin }
             val name = product?.name ?: r.title
             val offer = product?.cartOffer
-            val mueller = product?.isMueller == true
+            val ws = product?.webShop
             val url = product?.pageUrl(domain) ?: "https://www.$domain/dp/$asin"
-            // Müller hat keinen Direkt-Link „in den Warenkorb“ – dort öffnet der Knopf die Produktseite.
-            val cart = if (mueller) url else cartUrl(domain, asin, offer)
+            // Web-Shops haben keinen Direkt-Link „in den Warenkorb“ – dort öffnet der Knopf die Produktseite.
+            val cart = if (ws != null) url else cartUrl(domain, asin, offer)
             var message: String = alert
             if (offerMismatch) {
                 message += "\n⏸ Auto-Kauf wartet: in der Kaufbox liegt nicht das festgehaltene Angebot" +
@@ -217,7 +219,7 @@ object Checker {
             if (buyNow) {
                 val visible = Store.watchBuy(ctx) && Links.canOpenFromBackground(ctx)
                 val res = try {
-                    if (mueller) MuellerBuyer.buy(ctx, url, asin, dryRun = false, visible = visible)
+                    if (ws != null) ShopBuyer.buy(ctx, ws, url, asin, dryRun = false, visible = visible)
                     else AutoBuyer.buy(ctx, domain, asin, dryRun = false, visible = visible)
                 } catch (e: Exception) {
                     AutoBuyer.Result(AutoBuyer.Outcome.FAILED, e.message ?: "Fehler")
@@ -229,13 +231,13 @@ object Checker {
                     openUrl = when {
                         visible -> null // Das Auto-Kauf-Fenster ist schon offen.
                         res.outcome == AutoBuyer.Outcome.ORDERED || res.outcome == AutoBuyer.Outcome.UNCLEAR ->
-                            if (mueller) Mueller.ACCOUNT_URL else ordersUrl(domain)
+                            ws?.accountUrl ?: ordersUrl(domain)
                         else -> url
                     }
                 }
             } else if (Store.autoCart(ctx)) {
                 val res = try {
-                    if (mueller) MuellerBuyer.addToCart(ctx, url, asin)
+                    if (ws != null) ShopBuyer.addToCart(ctx, ws, url, asin)
                     else CartAdder.add(ctx, domain, asin, offer)
                 } catch (e: Exception) {
                     CartAdder.Result.FAILED
@@ -251,7 +253,7 @@ object Checker {
                 }
             }
 
-            val checkout = if (mueller) Mueller.CART_URL else checkoutUrl(domain)
+            val checkout = ws?.cartUrl ?: checkoutUrl(domain)
             // Mit Erlaubnis „Über anderen Apps einblenden“ direkt öffnen, sonst als Vollbild-Benachrichtigung
             // (öffnet sich bei gesperrtem/ausgeschaltetem Bildschirm, sonst erscheint sie oben).
             val fullScreen = openUrl?.let { u ->
@@ -268,11 +270,11 @@ object Checker {
     }
 
     /**
-     * Kategorie (Müller): meldet neue Produkte, Produkte die wieder online verfügbar sind,
+     * Kategorie (Web-Shop): meldet neue Produkte, Produkte die wieder online verfügbar sind,
      * und – falls ein Zielpreis gesetzt ist – verfügbare Produkte unter diesem Preis.
      * Die erste Prüfung merkt sich nur den Stand (keine Alarmflut).
      */
-    private fun handleCategory(ctx: Context, cat: Product, items: List<Mueller.CatItem>) {
+    private fun handleCategory(ctx: Context, shop: WebShop, cat: Product, items: List<WebShops.CatItem>) {
         if (items.isEmpty()) throw IllegalStateException("Keine Produkte in der Kategorie gefunden")
         val lines = mutableListOf<String>()
         Store.update(ctx, cat.asin) { p ->
@@ -307,10 +309,10 @@ object Checker {
         val fullScreen = if (Store.openOnAlert(ctx)) {
             if (Links.openFromBackground(ctx, cat.url)) null else cat.url
         } else null
-        notifyUser(ctx, cat.name, text, cat.url, cat.url, Mueller.CART_URL, fullScreen)
+        notifyUser(ctx, cat.name, text, cat.url, cat.url, shop.cartUrl, fullScreen)
         // Discord: max. 2000 Zeichen pro Nachricht
         val hook = Store.webhook(ctx)
-        var buf = StringBuilder("🟠 **${cat.name}** (Müller-Kategorie)\n")
+        var buf = StringBuilder("${shop.emoji} **${cat.name}** (${shop.label}-Kategorie)\n")
         for (l in lines) {
             if (buf.length + l.length > 1900) {
                 sendDiscord(hook, buf.toString())

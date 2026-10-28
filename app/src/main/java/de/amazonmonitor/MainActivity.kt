@@ -88,13 +88,16 @@ class MainActivity : AppCompatActivity() {
 
         // --- Produkt hinzufügen
         root.addView(label("Produkt hinzufügen"))
-        // Shop-Auswahl: Amazon oder Müller
+        // Shop-Auswahl: Amazon oder ein Web-Shop
         val shopGroup = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL }
         val rbAmazon = RadioButton(this).apply { id = View.generateViewId(); text = "Amazon" }
-        val rbMueller = RadioButton(this).apply { id = View.generateViewId(); text = "Müller" }
         shopGroup.addView(rbAmazon)
-        shopGroup.addView(rbMueller)
+        // Ein Knopf pro Web-Shop (Müller, MediaMarkt …)
+        val shopButtons = WebShops.all.associateWith { ws ->
+            RadioButton(this).apply { id = View.generateViewId(); text = ws.label }.also { shopGroup.addView(it) }
+        }
         rbAmazon.isChecked = true
+        fun selectedShop(): WebShop? = shopButtons.entries.firstOrNull { it.value.isChecked }?.key
         val inUrl = edit("Amazon-Link oder ASIN", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI)
         val inName = edit("Name (optional)")
         val inTarget = edit(
@@ -103,19 +106,20 @@ class MainActivity : AppCompatActivity() {
         )
         val inOffer = edit("OfferListingId (optional – hält genau dieses Angebot fest)")
         fun applyShop() {
-            val m = rbMueller.isChecked
-            inUrl.hint = if (m) "Müller-Link: Produkt (…/p/…) oder Kategorie (…/c/…)" else "Amazon-Link oder ASIN"
-            inTarget.hint = if (m) "Zielpreis in € (optional; bei Kategorie: Alarm unter diesem Preis)" else "Zielpreis in € (optional)"
-            inOffer.visibility = if (m) View.GONE else View.VISIBLE
+            val ws = selectedShop()
+            inUrl.hint = if (ws != null) "${ws.label}-Link: Produkt oder Kategorie" else "Amazon-Link oder ASIN"
+            inTarget.hint = if (ws != null) "Zielpreis in € (optional; bei Kategorie: Alarm unter diesem Preis)" else "Zielpreis in € (optional)"
+            inOffer.visibility = if (ws != null) View.GONE else View.VISIBLE
         }
         shopGroup.setOnCheckedChangeListener { _, _ -> applyShop() }
-        // Eingefügten Müller-Link erkennen und Shop automatisch umstellen.
+        // Eingefügten Link erkennen und Shop automatisch umstellen.
         inUrl.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun afterTextChanged(s: Editable?) {
                 val t = s?.toString() ?: return
-                if (t.contains("mueller.de") && !rbMueller.isChecked) rbMueller.isChecked = true
+                val ws = WebShops.detect(t)
+                if (ws != null) shopButtons[ws]?.let { if (!it.isChecked) it.isChecked = true }
                 else if (t.contains("amazon.") && !rbAmazon.isChecked) rbAmazon.isChecked = true
             }
         })
@@ -127,14 +131,15 @@ class MainActivity : AppCompatActivity() {
         root.addView(button("Hinzufügen") {
             val target = inTarget.text.toString().replace(',', '.').toDoubleOrNull()
             val product: Product
-            if (rbMueller.isChecked) {
-                val link = Mueller.parse(inUrl.text.toString())
+            val ws = selectedShop()
+            if (ws != null) {
+                val link = ws.parse(inUrl.text.toString())
                 if (link == null) {
-                    toast("Kein Müller-Link erkannt. Nutze einen Produkt-Link (mueller.de/p/…) oder Kategorie-Link (mueller.de/c/…).")
+                    toast("Kein ${ws.label}-Link erkannt. Nutze den Link einer Produkt- oder Kategorieseite von ${ws.base}.")
                     return@button
                 }
                 val name = inName.text.toString().trim().ifEmpty { link.id }
-                product = Product(link.id, name, target, shop = Product.SHOP_MUELLER, kind = link.kind, url = link.url)
+                product = Product(link.id, name, target, shop = ws.key, kind = link.kind, url = link.url)
             } else {
                 val asin = Scraper.extractAsin(inUrl.text.toString())
                 if (asin == null) {
@@ -155,14 +160,14 @@ class MainActivity : AppCompatActivity() {
             inOffer.setText("")
             schedule(Store.interval(this), update = false)
             refresh()
-            toast(if (product.isMueller) "Hinzugefügt – prüfe Müller-Seite …" else "Produkt hinzugefügt – lese OfferListingId …")
-            // Sofort prüfen (Amazon: Preis, Verkäufer, OfferListingId → Discord; Müller: Preis/Verfügbarkeit bzw. Kategorie-Stand).
+            toast(product.webShop?.let { "Hinzugefügt – prüfe ${it.label}-Seite …" } ?: "Produkt hinzugefügt – lese OfferListingId …")
+            // Sofort prüfen (Amazon: Preis, Verkäufer, OfferListingId → Discord; Web-Shops: Preis/Verfügbarkeit bzw. Kategorie-Stand).
             val app = applicationContext
             CoroutineScope(Dispatchers.IO).launch {
                 val err = Checker.checkOne(app, id)
                 val p = Store.load(app).firstOrNull { it.asin == id }
                 // Nur von Hand eingetragene ID (auf der Seite keine gefunden): trotzdem bei Discord hinterlegen.
-                if (err == null && p != null && !p.isMueller && p.offerId == null && p.pinnedOffer != null) {
+                if (err == null && p != null && !p.isWebShop && p.offerId == null && p.pinnedOffer != null) {
                     Checker.sendDiscord(
                         Store.webhook(app),
                         "🆕 OfferListingId (von Hand)\n**${p.name}**\n${Checker.offerInfo(Store.domain(app), p)}"
@@ -177,7 +182,7 @@ class MainActivity : AppCompatActivity() {
                             err != null -> "Prüfung fehlgeschlagen: $err"
                             p == null -> "Produkt fehlt."
                             p.isCategory -> "Kategorie gemerkt: " + p.describe().substringAfter("\n").substringBefore("\n")
-                            p.isMueller -> "Müller: " + (p.lastPrice?.let { money(it) } ?: "Preis ?") +
+                            p.isWebShop -> "${p.webShop?.label}: " + (p.lastPrice?.let { money(it) } ?: "Preis ?") +
                                 if (p.available) ", online verfügbar" else ", ausverkauft"
                             p.cartOffer != null -> "OfferListingId gefunden$discord:\n${p.cartOffer}"
                             else -> "Keine OfferListingId gefunden (Artikel evtl. nicht verfügbar)."
@@ -331,44 +336,8 @@ class MainActivity : AppCompatActivity() {
             startActivity(Links.inApp(this, "https://www.${Store.domain(this)}/gp/sign-in.html"))
         }.apply { textSize = 12f })
 
-        // --- Müller-Zugang (verschlüsselt gespeichert)
-        root.addView(label("Müller-Zugang (für Auto-Kauf bei Müller)"))
-        val inMMail = edit(
-            "E-Mail (Müller-Konto)",
-            InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
-            Store.muellerEmail(this)
-        )
-        val inMPw = edit(
-            if (Store.hasMuellerLogin(this)) "Passwort (gespeichert – leer lassen zum Behalten)" else "Passwort",
-            InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-        )
-        root.addView(inMMail)
-        root.addView(inMPw)
-        root.addView(button("Müller-Zugang speichern") {
-            val mail = inMMail.text.toString().trim()
-            val pw = inMPw.text.toString()
-            if (mail.isEmpty()) {
-                toast("Bitte E-Mail eintragen.")
-            } else if (pw.isEmpty() && !Store.hasMuellerLogin(this)) {
-                toast("Bitte Passwort eintragen.")
-            } else {
-                Store.saveMuellerLogin(this, mail, if (pw.isEmpty()) null else pw)
-                inMPw.setText("")
-                toast("Müller-Zugang verschlüsselt gespeichert.")
-            }
-        })
-        root.addView(button("Müller-Zugang löschen") {
-            Store.clearMuellerLogin(this)
-            inMMail.setText("")
-            inMPw.setText("")
-            toast("Müller-Zugang gelöscht.")
-        })
-        root.addView(button("Bei Müller anmelden (Chrome)") {
-            Links.openInChrome(this, Mueller.ACCOUNT_URL)
-        })
-        root.addView(button("Bei Müller in der App anmelden (für Auto-Kauf)") {
-            startActivity(Links.inApp(this, Mueller.ACCOUNT_URL))
-        }.apply { textSize = 12f })
+        // --- Zugang je Web-Shop (Müller, MediaMarkt …), verschlüsselt gespeichert
+        for (ws in WebShops.all) addShopLoginSection(root, ws)
 
         root.addView(button("Jetzt prüfen") {
             val req = OneTimeWorkRequestBuilder<CheckWorker>().build()
@@ -444,7 +413,47 @@ class MainActivity : AppCompatActivity() {
             .findViewById<TextView>(android.R.id.message)?.setTextIsSelectable(true)
     }
 
+    /** Eingabe für E-Mail/Passwort eines Web-Shops plus Anmelde-Knöpfe. */
+    private fun addShopLoginSection(root: LinearLayout, ws: WebShop) {
+        root.addView(label("${ws.emoji} ${ws.label}-Zugang (für Auto-Kauf bei ${ws.label})"))
+        val inMail = edit(
+            "E-Mail (${ws.label}-Konto)",
+            InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
+            Store.shopEmail(this, ws)
+        )
+        val inPw = edit(
+            if (Store.hasShopLogin(this, ws)) "Passwort (gespeichert – leer lassen zum Behalten)" else "Passwort",
+            InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        )
+        root.addView(inMail)
+        root.addView(inPw)
+        root.addView(button("${ws.label}-Zugang speichern") {
+            val mail = inMail.text.toString().trim()
+            val pw = inPw.text.toString()
+            if (mail.isEmpty()) {
+                toast("Bitte E-Mail eintragen.")
+            } else if (pw.isEmpty() && !Store.hasShopLogin(this, ws)) {
+                toast("Bitte Passwort eintragen.")
+            } else {
+                Store.saveShopLogin(this, ws, mail, if (pw.isEmpty()) null else pw)
+                inPw.setText("")
+                toast("${ws.label}-Zugang verschlüsselt gespeichert.")
+            }
+        })
+        root.addView(button("${ws.label}-Zugang löschen") {
+            Store.clearShopLogin(this, ws)
+            inMail.setText("")
+            inPw.setText("")
+            toast("${ws.label}-Zugang gelöscht.")
+        })
+        root.addView(button("Bei ${ws.label} anmelden (Chrome)") { Links.openInChrome(this, ws.accountUrl) })
+        root.addView(button("Bei ${ws.label} in der App anmelden (für Auto-Kauf)") {
+            startActivity(Links.inApp(this, ws.accountUrl))
+        }.apply { textSize = 12f })
+    }
+
     private fun toggleAutoBuy(p: Product) {
+        val ws = p.webShop
         if (p.autoBuy) {
             Store.update(this, p.asin) { it.autoBuy = false }
             toast("Auto-Kauf für ${p.name} entschärft.")
@@ -465,11 +474,11 @@ class MainActivity : AppCompatActivity() {
             .setMessage(
                 "${p.name} wird automatisch und ohne Rückfrage bestellt, sobald der Preis bei " +
                     "höchstens ${money(target)} liegt (Versandkosten kommen ggf. dazu).\n\n" +
-                    (if (p.isMueller) {
-                        "• Müller: Artikel kommt in den Warenkorb, dann wird der GANZE Warenkorb bestellt " +
+                    (if (ws != null) {
+                        "• ${ws.label}: Artikel kommt in den Warenkorb, dann wird der GANZE Warenkorb bestellt " +
                             "– leere ihn vorher, wenn noch anderes drin liegt\n" +
-                            "• Voreinstellungen aus deinem Müller-Konto/Checkout (Lieferart, Adresse, Zahlung)\n" +
-                            (if (!Store.hasMuellerLogin(this)) "• ⚠️ Kein Müller-Zugang gespeichert – Anmeldung klappt nur, wenn die App schon angemeldet ist\n" else "")
+                            "• Voreinstellungen aus deinem ${ws.label}-Konto/Checkout (Lieferart, Adresse, Zahlung)\n" +
+                            (if (!Store.hasShopLogin(this, ws)) "• ⚠️ Kein ${ws.label}-Zugang gespeichert – Anmeldung klappt nur, wenn die App schon angemeldet ist\n" else "")
                     } else {
                         "• Menge 1, über „Jetzt kaufen“ (der übrige Warenkorb wird nicht mitbestellt)\n" +
                             "• Standard-Lieferadresse und -Zahlungsart deines Amazon-Kontos\n"
@@ -501,8 +510,8 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener { listFilter = f; refresh() }
         }
         bar.addView(tab("Alle (${all.size})", null))
-        bar.addView(tab("Amazon (${all.count { !it.isMueller }})", Product.SHOP_AMAZON))
-        bar.addView(tab("Müller (${all.count { it.isMueller }})", Product.SHOP_MUELLER))
+        bar.addView(tab("Amazon (${all.count { !it.isWebShop }})", Product.SHOP_AMAZON))
+        for (ws in WebShops.all) bar.addView(tab("${ws.label} (${all.count { it.shop == ws.key }})", ws.key))
         listBox.addView(bar)
 
         val items = all.filter { listFilter == null || it.shop == listFilter }
@@ -510,10 +519,10 @@ class MainActivity : AppCompatActivity() {
             listBox.addView(TextView(this).apply { text = "Noch keine Produkte." })
             return
         }
-        for (shop in listOf(Product.SHOP_AMAZON, Product.SHOP_MUELLER)) {
+        for (shop in listOf(Product.SHOP_AMAZON) + WebShops.all.map { it.key }) {
             val group = items.filter { it.shop == shop }
             if (group.isEmpty()) continue
-            listBox.addView(label(if (shop == Product.SHOP_MUELLER) "🟠 Müller" else "🟡 Amazon"))
+            listBox.addView(label(WebShops.byKey(shop)?.let { "${it.emoji} ${it.label}" } ?: "🟡 Amazon"))
             for (p in group) listBox.addView(buildRow(p))
         }
     }
@@ -543,7 +552,8 @@ class MainActivity : AppCompatActivity() {
             return row
         }
 
-        if (p.isMueller) {
+        val ws = p.webShop
+        if (ws != null) {
             row.addView(smallButton("Zur Produktseite") { openWeb(p.url) })
         } else {
             row.addView(smallButton("In den Warenkorb") { openWeb(Checker.cartUrl(domain, p.asin, p.cartOffer)) })
@@ -555,7 +565,7 @@ class MainActivity : AppCompatActivity() {
                 toast("Test läuft, bitte etwa 20–90 Sekunden warten …")
                 CoroutineScope(Dispatchers.Main).launch {
                     val res = try {
-                        if (p.isMueller) MuellerBuyer.addToCart(this@MainActivity, p.url, p.asin)
+                        if (ws != null) ShopBuyer.addToCart(this@MainActivity, ws, p.url, p.asin)
                         else CartAdder.add(this@MainActivity, domain, p.asin, p.cartOffer)
                     } catch (e: Exception) {
                         CartAdder.lastDetail = e.message ?: "Fehler"
@@ -573,10 +583,10 @@ class MainActivity : AppCompatActivity() {
             }
         })
         row.addView(smallButton("Zur Kasse") {
-            if (p.isMueller) openWeb(Mueller.CART_URL) else openWeb("https://www.$domain/gp/cart/view.html", true)
+            if (ws != null) openWeb(ws.cartUrl) else openWeb("https://www.$domain/gp/cart/view.html", true)
         })
         row.addView(smallButton(if (p.autoBuy) "Auto-Kauf entschärfen" else "Auto-Kauf scharf schalten") { toggleAutoBuy(p) })
-        if (!p.isMueller) {
+        if (ws == null) {
             row.addView(smallButton(
                 if (p.pinnedOffer != null) "Angebot freigeben (jedes Angebot)" else "Aktuelles Angebot festhalten"
             ) { togglePin(p) })
@@ -589,7 +599,7 @@ class MainActivity : AppCompatActivity() {
                 CoroutineScope(Dispatchers.Main).launch {
                     val visible = Store.watchBuy(this@MainActivity)
                     val res = try {
-                        if (p.isMueller) MuellerBuyer.buy(this@MainActivity, p.url, p.asin, dryRun = true, visible = visible)
+                        if (ws != null) ShopBuyer.buy(this@MainActivity, ws, p.url, p.asin, dryRun = true, visible = visible)
                         else AutoBuyer.buy(this@MainActivity, domain, p.asin, dryRun = true, visible = visible)
                     } catch (e: Exception) {
                         AutoBuyer.Result(AutoBuyer.Outcome.FAILED, e.message ?: "Fehler")
@@ -609,7 +619,7 @@ class MainActivity : AppCompatActivity() {
         return row
     }
 
-    /** Zeigt die zuletzt gesehenen Produkte einer Müller-Kategorie; Antippen übernimmt eins als einzelnes Produkt. */
+    /** Zeigt die zuletzt gesehenen Produkte einer Shop-Kategorie; Antippen übernimmt eins als einzelnes Produkt. */
     private fun showCategory(cat: Product) {
         val st = try { org.json.JSONObject(cat.catState) } catch (e: Exception) { org.json.JSONObject() }
         val urls = st.keys().asSequence().toList()
@@ -624,13 +634,13 @@ class MainActivity : AppCompatActivity() {
         }.toTypedArray()
         AlertDialog.Builder(this)
             .setTitle("${cat.name} (✅ online verfügbar)")
-            .setItems(labels) { _, i -> addFromCategory(urls[i], st.getJSONObject(urls[i]).optString("n")) }
+            .setItems(labels) { _, i -> cat.webShop?.let { ws -> addFromCategory(ws, urls[i], st.getJSONObject(urls[i]).optString("n")) } }
             .setNegativeButton("Schließen", null)
             .show()
     }
 
-    private fun addFromCategory(url: String, name: String) {
-        val link = Mueller.parse(url) ?: return toast("Link nicht erkannt.")
+    private fun addFromCategory(shop: WebShop, url: String, name: String) {
+        val link = shop.parse(url) ?: return toast("Link nicht erkannt.")
         val inTarget = edit("Zielpreis in € (für Alarm / Auto-Kauf, optional)", InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL)
         AlertDialog.Builder(this)
             .setTitle("Einzeln überwachen?")
@@ -638,7 +648,7 @@ class MainActivity : AppCompatActivity() {
             .setView(inTarget)
             .setPositiveButton("Hinzufügen") { _, _ ->
                 val target = inTarget.text.toString().replace(',', '.').toDoubleOrNull()
-                Store.add(this, Product(link.id, name.ifEmpty { link.id }, target, shop = Product.SHOP_MUELLER, url = link.url))
+                Store.add(this, Product(link.id, name.ifEmpty { link.id }, target, shop = shop.key, url = link.url))
                 refresh()
                 toast("Hinzugefügt – prüfe …")
                 val app = applicationContext

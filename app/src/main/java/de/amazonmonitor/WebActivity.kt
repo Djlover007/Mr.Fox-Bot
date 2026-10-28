@@ -31,8 +31,8 @@ class WebActivity : AppCompatActivity() {
         setContentView(web)
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
-        // Müller-Seiten: Browser-Kennung wie Chrome, sonst hängt die Sicherheitsprüfung.
-        if (intent.getStringExtra("url")?.contains("mueller.de") == true) Mueller.setup(this, web)
+        // Web-Shop-Seiten: Browser-Kennung wie Chrome, sonst hängt die Bot-/Sicherheitsprüfung.
+        intent.getStringExtra("url")?.let { u -> if (WebShops.all.any { u.contains(it.base.removePrefix("https://www.")) }) WebShops.setup(this, web) }
         web.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
