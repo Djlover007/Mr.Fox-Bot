@@ -339,6 +339,37 @@ class MainActivity : AppCompatActivity() {
         // --- Zugang je Web-Shop (Müller, MediaMarkt …), verschlüsselt gespeichert
         for (ws in WebShops.all) addShopLoginSection(root, ws)
 
+        // --- PAYBACK
+        root.addView(label("💳 PAYBACK (°Punkte bei Amazon und MediaMarkt)"))
+        root.addView(TextView(this).apply {
+            text = "Vor jedem automatischen Kauf bzw. Warenkorb öffnet die App die Payback-Shopseite, aktiviert die " +
+                "Coupons, drückt „Jetzt shoppen“ und kauft dann ein. Dafür einmal in der App bei Payback anmelden."
+            textSize = 12f
+        })
+        for (key in listOf(Product.SHOP_AMAZON, Product.SHOP_MEDIAMARKT)) {
+            root.addView(CheckBox(this).apply {
+                text = "${Payback.label(key)}: über Payback einkaufen"
+                isChecked = Store.payback(this@MainActivity, key)
+                setOnCheckedChangeListener { _, on -> Store.savePayback(this@MainActivity, key, on) }
+            })
+        }
+        root.addView(button("Bei Payback anmelden (App)") {
+            startActivity(Links.inApp(this, Payback.LOGIN_URL))
+        })
+        for (key in listOf(Product.SHOP_AMAZON, Product.SHOP_MEDIAMARKT)) {
+            root.addView(button("Payback testen: ${Payback.label(key)} (Coupons + Weiterleitung)") {
+                toast("Payback-Test läuft …")
+                CoroutineScope(Dispatchers.Main).launch {
+                    val r = try {
+                        Payback.redirect(this@MainActivity, key, visible = true)
+                    } catch (e: Exception) {
+                        Payback.Result(false, e.message ?: "Fehler")
+                    }
+                    if (!isFinishing && !isDestroyed) toast(Payback.describe(r))
+                }
+            }.apply { textSize = 12f })
+        }
+
         root.addView(button("Jetzt prüfen") {
             val req = OneTimeWorkRequestBuilder<CheckWorker>().build()
             val wm = WorkManager.getInstance(this)
@@ -557,6 +588,28 @@ class MainActivity : AppCompatActivity() {
             row.addView(smallButton("Zur Produktseite") { openWeb(p.url) })
         } else {
             row.addView(smallButton("In den Warenkorb") { openWeb(Checker.cartUrl(domain, p.asin, p.cartOffer)) })
+        }
+        // Von Hand über Payback kaufen: erst Weiterleitung (unsichtbar), dann Produkt im App-Fenster öffnen.
+        if (Payback.supports(p.shop) && Store.payback(this, p.shop)) {
+            row.addView(smallButton("💳 Über Payback öffnen") {
+                if (Store.externalBrowser(this)) {
+                    // Chrome hat eigene Cookies: dort selbst „Jetzt shoppen“ tippen.
+                    toast("In Chrome auf „Jetzt shoppen“ tippen, dann das Produkt suchen und kaufen.")
+                    Payback.shopPage(p.shop)?.let { Links.openInChrome(this, it) }
+                    return@smallButton
+                }
+                toast("Payback-Weiterleitung …")
+                CoroutineScope(Dispatchers.Main).launch {
+                    val r = try {
+                        Payback.redirect(this@MainActivity, p.shop)
+                    } catch (e: Exception) {
+                        Payback.Result(false, e.message ?: "Fehler")
+                    }
+                    if (isFinishing || isDestroyed) return@launch
+                    toast(Payback.describe(r))
+                    startActivity(Links.inApp(this@MainActivity, p.pageUrl(domain)))
+                }
+            })
         }
         row.addView(Button(this).apply {
             text = "Automatisch in Warenkorb (Test)"

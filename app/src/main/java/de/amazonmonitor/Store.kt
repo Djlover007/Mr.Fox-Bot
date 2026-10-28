@@ -237,6 +237,13 @@ object Store {
             .apply()
     }
 
+    /** Einkäufe bei diesem Shop über PAYBACK starten (°Punkte). */
+    fun payback(c: Context, shopKey: String): Boolean = prefs(c).getBoolean("payback_$shopKey", false)
+
+    fun savePayback(c: Context, shopKey: String, enabled: Boolean) {
+        prefs(c).edit().putBoolean("payback_$shopKey", enabled).apply()
+    }
+
     fun saveAutoBuy(c: Context, enabled: Boolean) {
         prefs(c).edit()
             .putBoolean("autobuy", enabled)

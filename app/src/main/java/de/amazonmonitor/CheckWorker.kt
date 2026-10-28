@@ -216,6 +216,17 @@ object Checker {
             // Welche Seite bei „Bei Alarm automatisch öffnen“ gezeigt wird (null = nichts öffnen).
             var openUrl: String? = if (Store.openOnAlert(ctx)) url else null
 
+            // PAYBACK: vor automatischem Kauf/Warenkorb über die Payback-Shopseite weiterleiten (°Punkte).
+            val shopKey = product?.shop ?: Product.SHOP_AMAZON
+            if ((buyNow || Store.autoCart(ctx)) && Store.payback(ctx, shopKey) && Payback.supports(shopKey)) {
+                val pb = try {
+                    Payback.redirect(ctx, shopKey)
+                } catch (e: Exception) {
+                    Payback.Result(false, e.message ?: "Fehler")
+                }
+                message += "\n" + Payback.describe(pb)
+            }
+
             if (buyNow) {
                 val visible = Store.watchBuy(ctx) && Links.canOpenFromBackground(ctx)
                 val res = try {

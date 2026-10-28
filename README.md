@@ -51,6 +51,20 @@ Funktioniert wie Müller (gleicher Mechanismus, siehe oben):
   App anmelden“ die Seite öffnen und ggf. die Prüfung bestätigen.
 - Auch hier wird beim Auto-Kauf der **ganze MediaMarkt-Warenkorb** bestellt.
 
+## PAYBACK (°Punkte bei Amazon und MediaMarkt)
+Amazon und MediaMarkt schreiben Payback-Punkte nur gut, wenn der Einkauf über die Payback-Shopseite
+(„Jetzt shoppen“) startet und zeitnah (innerhalb von 24 Std.) bestellt wird.
+1. Einmal **„Bei Payback anmelden (App)“** – im App-Fenster anmelden („Angemeldet bleiben“).
+2. Unter „PAYBACK“ für Amazon und/oder MediaMarkt **„über Payback einkaufen“** anhaken.
+3. Mit **„Payback testen“** prüfen: Die App öffnet sichtbar die Payback-Shopseite, aktiviert alle
+   Coupons, drückt „Jetzt shoppen“, wartet die Weiterleitung ab und akzeptiert die Cookies des Shops.
+
+Danach läuft das vor jedem **Auto-Kauf** und **automatischen Warenkorb** unsichtbar ab. Beim Produkt
+gibt es zusätzlich „💳 Über Payback öffnen“ für Käufe von Hand. Klappt die Weiterleitung nicht,
+wird trotzdem gekauft – dann nur ohne Punkte (die Meldung sagt das).
+Hinweise: Punkte erst nach einigen Tagen sichtbar; Ausnahmen laut Payback (u. a. Bücher, Gutscheine,
+Vorbestellungen, Versandkosten); nicht mit anderen Cashback-Portalen kombinierbar; Müller ist kein Payback-Partner.
+
 ## OfferListingId (Angebot / Verkäufer)
 - Bei jeder Prüfung liest die App die **OfferListingId** und den Verkäufer des Angebots in der Kaufbox aus.
 - „In den Warenkorb“ (Button und Benachrichtigung) legt genau dieses Angebot in den Warenkorb.
@@ -131,6 +145,7 @@ app/src/main/java/de/amazonmonitor/
     Links.kt          Links im App-Fenster oder in Chrome öffnen
     Shops.kt          Web-Shops (Müller, MediaMarkt): Links erkennen, Produkt-/Kategorieseiten auslesen
     ShopBuyer.kt      Web-Shops: Warenkorb und Auto-Kauf
+    Payback.kt        PAYBACK: Coupons aktivieren, „Jetzt shoppen“-Weiterleitung
 ```
 
 ## APK bauen und installieren
