@@ -460,6 +460,21 @@ class MainActivity : AppCompatActivity() {
             textSize = 12f
             setPadding(0, dp(24), 0, 0)
         })
+
+        // --- Signatur
+        val version = try {
+            packageManager.getPackageInfo(packageName, 0).versionName ?: ""
+        } catch (e: Exception) {
+            ""
+        }
+        root.addView(TextView(this).apply {
+            text = "🦊 Design by Mr.Fox" + if (version.isNotEmpty()) "\nVersion $version" else ""
+            textSize = 14f
+            gravity = android.view.Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD_ITALIC)
+            alpha = 0.7f
+            setPadding(0, dp(32), 0, dp(8))
+        })
     }
 
     // --- Anzeige „Bot läuft“
