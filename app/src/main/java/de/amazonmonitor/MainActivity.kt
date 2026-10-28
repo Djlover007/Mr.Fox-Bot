@@ -342,31 +342,23 @@ class MainActivity : AppCompatActivity() {
         // --- PAYBACK
         root.addView(label("💳 PAYBACK (°Punkte bei Amazon und MediaMarkt)"))
         root.addView(TextView(this).apply {
-            text = "Vor jedem automatischen Kauf bzw. Warenkorb öffnet die App die Payback-Shopseite, aktiviert die " +
-                "Coupons, drückt „Jetzt shoppen“ und kauft dann ein. Dafür einmal in der App bei Payback anmelden."
+            text = "Payback erlaubt Online-Shopping auf dem Handy nur in der Payback-App. Mit Haken bekommen " +
+                "Alarme und Produkte einen Knopf „💳 Über Payback kaufen“: Er öffnet die Payback-App beim Shop und " +
+                "kopiert den Produktnamen. Dort „Jetzt shoppen“ tippen und im Shop den Namen in die Suche einfügen. " +
+                "Der Auto-Kauf läuft ohne Payback (ohne °Punkte)."
             textSize = 12f
         })
         for (key in listOf(Product.SHOP_AMAZON, Product.SHOP_MEDIAMARKT)) {
             root.addView(CheckBox(this).apply {
-                text = "${Payback.label(key)}: über Payback einkaufen"
+                text = "${Payback.label(key)}: Payback-Knopf anzeigen"
                 isChecked = Store.payback(this@MainActivity, key)
-                setOnCheckedChangeListener { _, on -> Store.savePayback(this@MainActivity, key, on) }
-            })
-        }
-        root.addView(button("Bei Payback anmelden (App)") {
-            startActivity(Links.inApp(this, Payback.LOGIN_URL))
-        })
-        for (key in listOf(Product.SHOP_AMAZON, Product.SHOP_MEDIAMARKT)) {
-            root.addView(button("Payback testen: ${Payback.label(key)} (Coupons + Weiterleitung)") {
-                toast("Payback-Test läuft …")
-                CoroutineScope(Dispatchers.Main).launch {
-                    val r = try {
-                        Payback.redirect(this@MainActivity, key, visible = true)
-                    } catch (e: Exception) {
-                        Payback.Result(false, e.message ?: "Fehler")
-                    }
-                    if (!isFinishing && !isDestroyed) toast(Payback.describe(r))
+                setOnCheckedChangeListener { _, on ->
+                    Store.savePayback(this@MainActivity, key, on)
+                    refresh()
                 }
+            })
+            root.addView(button("Payback öffnen: ${Payback.label(key)}") {
+                Payback.open(this, key, null)
             }.apply { textSize = 12f })
         }
 
@@ -589,27 +581,9 @@ class MainActivity : AppCompatActivity() {
         } else {
             row.addView(smallButton("In den Warenkorb") { openWeb(Checker.cartUrl(domain, p.asin, p.cartOffer)) })
         }
-        // Von Hand über Payback kaufen: erst Weiterleitung (unsichtbar), dann Produkt im App-Fenster öffnen.
+        // Von Hand über Payback kaufen: Payback-App öffnen, Produktname liegt in der Zwischenablage.
         if (Payback.supports(p.shop) && Store.payback(this, p.shop)) {
-            row.addView(smallButton("💳 Über Payback öffnen") {
-                if (Store.externalBrowser(this)) {
-                    // Chrome hat eigene Cookies: dort selbst „Jetzt shoppen“ tippen.
-                    toast("In Chrome auf „Jetzt shoppen“ tippen, dann das Produkt suchen und kaufen.")
-                    Payback.shopPage(p.shop)?.let { Links.openInChrome(this, it) }
-                    return@smallButton
-                }
-                toast("Payback-Weiterleitung …")
-                CoroutineScope(Dispatchers.Main).launch {
-                    val r = try {
-                        Payback.redirect(this@MainActivity, p.shop)
-                    } catch (e: Exception) {
-                        Payback.Result(false, e.message ?: "Fehler")
-                    }
-                    if (isFinishing || isDestroyed) return@launch
-                    toast(Payback.describe(r))
-                    startActivity(Links.inApp(this@MainActivity, p.pageUrl(domain)))
-                }
-            })
+            row.addView(smallButton("💳 Über Payback kaufen") { Payback.open(this, p.shop, p.name) })
         }
         row.addView(Button(this).apply {
             text = "Automatisch in Warenkorb (Test)"

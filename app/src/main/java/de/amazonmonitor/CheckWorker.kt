@@ -216,16 +216,10 @@ object Checker {
             // Welche Seite bei „Bei Alarm automatisch öffnen“ gezeigt wird (null = nichts öffnen).
             var openUrl: String? = if (Store.openOnAlert(ctx)) url else null
 
-            // PAYBACK: vor automatischem Kauf/Warenkorb über die Payback-Shopseite weiterleiten (°Punkte).
+            // PAYBACK: Auf dem Handy nur über die Payback-App möglich → Knopf in der Benachrichtigung.
             val shopKey = product?.shop ?: Product.SHOP_AMAZON
-            if ((buyNow || Store.autoCart(ctx)) && Store.payback(ctx, shopKey) && Payback.supports(shopKey)) {
-                val pb = try {
-                    Payback.redirect(ctx, shopKey)
-                } catch (e: Exception) {
-                    Payback.Result(false, e.message ?: "Fehler")
-                }
-                message += "\n" + Payback.describe(pb)
-            }
+            val payback = Store.payback(ctx, shopKey) && Payback.supports(shopKey)
+            if (payback && buyNow) message += "\n💳 Auto-Kauf läuft ohne Payback-Punkte (Payback erlaubt das nur in der Payback-App)"
 
             if (buyNow) {
                 val visible = Store.watchBuy(ctx) && Links.canOpenFromBackground(ctx)
@@ -270,12 +264,13 @@ object Checker {
             val fullScreen = openUrl?.let { u ->
                 if (Links.openFromBackground(ctx, u)) null else u
             }
-            notifyUser(ctx, name, message, url, cart, checkout, fullScreen)
+            notifyUser(ctx, name, message, url, cart, checkout, fullScreen, if (payback) Pair(shopKey, name) else null)
             sendDiscord(
                 Store.webhook(ctx),
                 "**$name**\n$message\n" +
                     (product?.let { offerInfo(domain, it) } ?: "Produkt: $url\nIn den Warenkorb: $cart") +
-                    "\nZur Kasse: <$checkout>"
+                    "\nZur Kasse: <$checkout>" +
+                    (if (payback) "\n💳 Über Payback: Payback-App → ${Payback.label(shopKey)} → „Jetzt shoppen“" else "")
             )
         }
     }
@@ -378,7 +373,9 @@ object Checker {
     @SuppressLint("MissingPermission")
     private fun notifyUser(
         ctx: Context, title: String, text: String, url: String, cartUrl: String, checkoutUrl: String,
-        fullScreenUrl: String? = null
+        fullScreenUrl: String? = null,
+        /** Shop-Schlüssel + Produktname für den Knopf „Über Payback kaufen“ (null = kein Knopf). */
+        payback: Pair<String, String>? = null,
     ) {
         val nm = NotificationManagerCompat.from(ctx)
         nm.createNotificationChannel(
@@ -399,6 +396,12 @@ object Checker {
             .addAction(android.R.drawable.ic_menu_send, "Zur Kasse", checkoutPi)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+        if (payback != null) {
+            b.addAction(
+                android.R.drawable.ic_menu_share, "💳 Über Payback kaufen",
+                Payback.pending(ctx, payback.first, payback.second, url.hashCode() + 2)
+            )
+        }
         if (fullScreenUrl != null) {
             b.setCategory(NotificationCompat.CATEGORY_ALARM)
             b.setFullScreenIntent(Links.pending(ctx, fullScreenUrl, false, fullScreenUrl.hashCode() + 1), true)
