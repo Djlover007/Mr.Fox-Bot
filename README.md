@@ -78,8 +78,9 @@ App-Browser blockt Payback). Deshalb halbautomatisch:
 **Payback-Automatik (optional):** Knopf „Payback-Automatik einschalten“ → in den Bedienungshilfen
 „Mr.Fox Bot – Payback-Automatik“ einschalten (falls gesperrt: App-Info → ⋮ → „Eingeschränkte
 Einstellungen zulassen“). Danach drückt sie nach „Über Payback kaufen“ in der Payback-App sichtbare
-„Aktivieren“-Coupons und einmal „Zur Amazon-App“/„Zur MediaMarkt-App“. Sie wirkt nur in der Payback-App
-und nur 90 Sekunden nach dem Tippen in Mr.Fox Bot.
+„Aktivieren“-Coupons, einmal „Zur Amazon-App“/„Zur MediaMarkt-App“, „Verstanden“ und im Shop den
+Cookie-Hinweis („Alle akzeptieren“ – ohne Cookies keine °Punkte). Sie wird nur in den 90 Sekunden nach
+dem Tippen in Mr.Fox Bot aktiv und schaltet sich nach dem Cookie-Hinweis sofort ab.
 
 Der **Auto-Kauf** läuft unabhängig davon ohne Payback, also ohne °Punkte. Müller ist kein Payback-Partner.
 

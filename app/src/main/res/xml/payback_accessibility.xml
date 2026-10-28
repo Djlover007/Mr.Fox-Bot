@@ -4,5 +4,4 @@
     android:accessibilityFeedbackType="feedbackGeneric"
     android:canRetrieveWindowContent="true"
     android:description="@string/payback_accessibility_desc"
-    android:notificationTimeout="300"
-    android:packageNames="de.payback.client.android" />
+    android:notificationTimeout="300" />

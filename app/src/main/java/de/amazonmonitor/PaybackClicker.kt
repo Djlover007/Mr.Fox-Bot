@@ -10,33 +10,52 @@ import android.view.accessibility.AccessibilityNodeInfo
 /**
  * Bedienungshilfe „Mr.Fox Bot – Payback-Automatik“.
  *
- * Wirkt ausschließlich in der Payback-App und nur, wenn Mr.Fox Bot sie kurz vorher „scharf“ gemacht hat
- * (Knopf „Über Payback kaufen“, 90 Sekunden). Dann:
- *  1. sichtbare, noch nicht aktivierte Coupons aktivieren,
- *  2. einmal „Zur Amazon-App“ / „Zur MediaMarkt-App“ / „Jetzt shoppen“ drücken – danach wieder aus.
+ * Tut nur etwas, wenn Mr.Fox Bot sie kurz vorher „scharf“ gemacht hat (Knopf „Über Payback kaufen“,
+ * 90 Sekunden). Dann:
+ *  1. in der Payback-App sichtbare, noch nicht aktivierte Coupons aktivieren,
+ *  2. einmal „Zur Amazon-App“ / „Zur MediaMarkt-App“ / „Jetzt shoppen“ drücken,
+ *  3. „Verstanden“ (Cookie-Hinweis von Payback) drücken,
+ *  4. im Shop (Amazon-App, MediaMarkt-App oder Browser) innerhalb von 60 Sek. den Cookie-Hinweis
+ *     akzeptieren („Alle akzeptieren“) – danach sofort wieder aus.
  * Sonst tut sie nichts.
  */
 class PaybackClicker : AccessibilityService() {
     private var couponClicks = 0
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event?.packageName?.toString() != PAYBACK_PACKAGE) return
+        val pkg = event?.packageName?.toString() ?: return
+        if (pkg == packageName) return // nie in Mr.Fox Bot selbst
         if (!isArmed(this)) {
             couponClicks = 0
             return
         }
         val root = rootInActiveWindow ?: return
+        val redirected = stage(this) >= 1
 
-        // 1. Coupons aktivieren (nur sichtbare, höchstens 10)
-        if (couponClicks < 10) {
-            for (n in find(root, COUPON_RE)) {
-                if (click(n)) couponClicks++
+        if (pkg == PAYBACK_PACKAGE) {
+            // „Ohne Cookies keine °Punkte! … Verstanden“
+            find(root, UNDERSTOOD_RE).firstOrNull()?.let { if (click(it)) return }
+            if (redirected) {
+                // Shop öffnet sich evtl. in einem Browserfenster innerhalb der Payback-App
+                find(root, COOKIE_RE).firstOrNull()?.let { if (click(it)) disarm(this) }
+            } else {
+                // 1. Coupons aktivieren (nur sichtbare, höchstens 10)
+                if (couponClicks < 10) {
+                    for (n in find(root, COUPON_RE)) if (click(n)) couponClicks++
+                }
+                // 2. Weiter zum Shop
+                val target = find(root, SHOP_RE).firstOrNull() ?: return
+                if (click(target)) setRedirected(this)
             }
+            return
         }
 
-        // 2. Weiter zum Shop
-        val target = find(root, SHOP_RE).firstOrNull() ?: return
-        if (click(target)) disarm(this)
+        // 3. Im Shop (Amazon-App, MediaMarkt-App oder Browser): Cookie-Hinweis akzeptieren – nur direkt
+        //    nach der eigenen Weiterleitung, danach sofort wieder aus.
+        if (redirected) {
+            val ok = find(root, COOKIE_RE).firstOrNull() ?: return
+            if (click(ok)) disarm(this)
+        }
     }
 
     override fun onInterrupt() {}
@@ -69,18 +88,29 @@ class PaybackClicker : AccessibilityService() {
     companion object {
         const val PAYBACK_PACKAGE = "de.payback.client.android"
         private val COUPON_RE = Regex("(?i)(jetzt )?aktivieren|coupon aktivieren")
+        private val UNDERSTOOD_RE = Regex("(?i)verstanden|ok,? verstanden|alles klar")
+        private val COOKIE_RE = Regex("(?i)alle akzeptieren|alle cookies akzeptieren|cookies akzeptieren|akzeptieren|alle zulassen|zustimmen|zustimmen und weiter|accept( all)?( cookies)?")
         private val SHOP_RE = Regex("(?i)zur (amazon|mediamarkt|media markt)[- ]app|zum (online[- ])?shop|jetzt shoppen|zu (amazon|mediamarkt)|weiter zu (amazon|mediamarkt)")
         private const val PREFS = "monitor"
         private const val KEY = "pb_armed_until"
+        private const val STAGE = "pb_stage"
 
         /** Für 90 Sekunden scharf machen (vor dem Öffnen der Payback-App). */
         fun arm(ctx: Context) {
             ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                .putLong(KEY, System.currentTimeMillis() + 90_000L).apply()
+                .putLong(KEY, System.currentTimeMillis() + 90_000L).putInt(STAGE, 0).apply()
         }
 
+        /** Weiterleitung zum Shop ausgelöst: noch 60 Sek. für „Verstanden“ und den Cookie-Hinweis. */
+        fun setRedirected(ctx: Context) {
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putLong(KEY, System.currentTimeMillis() + 60_000L).putInt(STAGE, 1).apply()
+        }
+
+        fun stage(ctx: Context): Int = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(STAGE, 0)
+
         fun disarm(ctx: Context) {
-            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putLong(KEY, 0L).apply()
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putLong(KEY, 0L).putInt(STAGE, 0).apply()
         }
 
         fun isArmed(ctx: Context): Boolean =
