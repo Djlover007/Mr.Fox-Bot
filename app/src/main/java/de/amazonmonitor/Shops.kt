@@ -134,7 +134,7 @@ object WebShops {
      * Stimmige Desktop-Ansicht (für die Payback-Shopseite – auf dem Handy bietet payback.de dort nur
      * „App herunterladen“). Neben der Kennung werden auch die übrigen Browser-Angaben (Plattform,
      * „mobil“, Touch) auf Windows-PC gestellt, sonst lehnt Cloudflare den Widerspruch ab.
-     * Nur für [originRule] (z. B. "https://*.payback.de").
+     * Nur für die Seiten in [originRule] (Muster wie in Payback.ORIGIN).
      */
     fun setupDesktop(ctx: Context, web: WebView, originRule: String) {
         setup(ctx, web)
