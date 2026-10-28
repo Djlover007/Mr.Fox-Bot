@@ -17,10 +17,24 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
+/**
+ * Prüfung über WorkManager (höchstens alle 15 Min.). Läuft der Dauerbetrieb ([BotService]), übernimmt
+ * der die Prüfungen – dann tut der Worker nichts. Er dient als Ersatz, falls Android den Dienst beendet.
+ */
 class CheckWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-        Checker.checkAll(applicationContext)
+        if (!BotService.alive || tags.contains(TAG_NOW)) {
+            Checker.checkAll(applicationContext)
+            val now = System.currentTimeMillis()
+            Store.setLastRun(applicationContext, Store.RUN_AMAZON, now)
+            Store.setLastRun(applicationContext, Store.RUN_SHOPS, now)
+        }
         Result.success()
+    }
+
+    companion object {
+        /** Markiert „Jetzt prüfen“ (läuft auch, wenn der Dauerbetrieb aktiv ist). */
+        const val TAG_NOW = "check-now"
     }
 }
 
@@ -32,10 +46,11 @@ object Checker {
      * Sicherheitsprüfung), werden nur dessen restliche Produkte für diese Runde übersprungen.
      * Gibt true zurück, wenn ein Shop blockiert hat.
      */
-    suspend fun checkAll(ctx: Context): Boolean {
+    suspend fun checkAll(ctx: Context, which: (Product) -> Boolean = { true }): Boolean {
         val domain = Store.domain(ctx)
         val dropPct = Store.dropPercent(ctx)
-        val products = Store.load(ctx)
+        val products = Store.load(ctx).filter(which)
+        if (products.isEmpty()) return false
         val problems = mutableListOf<String>()
         val blockedShops = mutableSetOf<String>()
 

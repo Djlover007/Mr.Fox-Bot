@@ -22,6 +22,17 @@ wieder verfügbar).
 - Optional: **Auto-Kauf** – bestellt ein Produkt selbstständig, sobald der Zielpreis erreicht ist
   (mit Probelauf und nur einem Versuch, siehe unten)
 
+## Läuft der Bot? / Dauerbetrieb (Amazon alle 2 Minuten)
+- Ganz oben in der App steht der Zustand: 🟢 läuft · 🟠 soll laufen, wurde aber beendet · 🔴 aus –
+  mit letzter und nächster Prüfung und Knopf **„Dauerbetrieb starten/stoppen“**.
+- Im Dauerbetrieb zeigt eine **feste Benachrichtigung** „🟢 Mr.Fox Bot läuft“ (mit Stopp-Knopf).
+- Amazon wird dann im **Amazon-Prüfintervall** geprüft (Standard 2 Min., min. 1), Müller/MediaMarkt im
+  eigenen Intervall (min. 5 Min.). Ohne Dauerbetrieb erlaubt Android nur etwa alle 15 Minuten.
+- Nach einem Neustart des Handys startet der Dauerbetrieb von selbst wieder.
+- **Akku-Optimierung ausschalten** (Knopf oben), sonst kann Android den Dienst beenden.
+- Hinweis: Der Dauerbetrieb hält das Handy wach und braucht mehr Akku. Sehr kurze Amazon-Intervalle
+  mit vielen Produkten können zu Captchas führen – dann das Intervall erhöhen.
+
 ## Müller (mueller.de)
 - Beim Hinzufügen oben **Amazon** oder **Müller** wählen (ein eingefügter mueller.de-Link stellt automatisch um).
 - **Müller-Produkt** (Link `mueller.de/p/…`): Preis und Verfügbarkeit („In den Warenkorb“ vorhanden =
@@ -144,6 +155,7 @@ app/src/main/java/de/amazonmonitor/
     Links.kt          Links im App-Fenster oder in Chrome öffnen
     Shops.kt          Web-Shops (Müller, MediaMarkt): Links erkennen, Produkt-/Kategorieseiten auslesen
     ShopBuyer.kt      Web-Shops: Warenkorb und Auto-Kauf
+    BotService.kt     Dauerbetrieb mit fester Benachrichtigung (kurze Prüfintervalle)
     Payback.kt        PAYBACK: Payback-App beim Shop öffnen, Produktname kopieren
 ```
 

@@ -200,7 +200,31 @@ object Store {
     }
 
     fun domain(c: Context): String = prefs(c).getString("domain", "amazon.de") ?: "amazon.de"
+    /** Prüfintervall Müller/MediaMarkt (und WorkManager-Ersatzprüfung) in Minuten. */
     fun interval(c: Context): Int = prefs(c).getInt("interval", 60)
+
+    /** Prüfintervall Amazon im Dauerbetrieb in Minuten (min. 1). */
+    fun amazonInterval(c: Context): Int = prefs(c).getInt("amazon_interval", 2)
+
+    fun saveAmazonInterval(c: Context, min: Int) {
+        prefs(c).edit().putInt("amazon_interval", min.coerceAtLeast(1)).apply()
+    }
+
+    /** Dauerbetrieb gewünscht (vom Nutzer gestartet)? */
+    fun botWanted(c: Context): Boolean = prefs(c).getBoolean("bot_wanted", false)
+
+    fun setBotWanted(c: Context, on: Boolean) {
+        prefs(c).edit().putBoolean("bot_wanted", on).apply()
+    }
+
+    const val RUN_AMAZON = "amazon"
+    const val RUN_SHOPS = "shops"
+
+    fun lastRun(c: Context, key: String): Long = prefs(c).getLong("last_run_$key", 0L)
+
+    fun setLastRun(c: Context, key: String, t: Long) {
+        prefs(c).edit().putLong("last_run_$key", t).apply()
+    }
     fun dropPercent(c: Context): Int = prefs(c).getInt("drop", 10)
 
     fun webhook(c: Context): String = prefs(c).getString("webhook", "") ?: ""

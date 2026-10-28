@@ -86,6 +86,33 @@ class MainActivity : AppCompatActivity() {
         }
         setContentView(ScrollView(this).apply { addView(root) })
 
+        // --- Läuft der Bot? (ganz oben)
+        botView = TextView(this).apply {
+            textSize = 14f
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+        }
+        root.addView(botView)
+        botButton = button("") {
+            if (BotService.alive) {
+                BotService.stop(this)
+                toast("Dauerbetrieb gestoppt.")
+            } else {
+                BotService.start(this)
+                toast("Dauerbetrieb gestartet – siehe feste Benachrichtigung.")
+            }
+            handler.postDelayed({ updateBotView() }, 800)
+        }
+        root.addView(botButton)
+        root.addView(button("Akku-Optimierung für Mr.Fox Bot ausschalten (empfohlen)") {
+            try {
+                startActivity(
+                    Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))
+                )
+            } catch (e: Exception) {
+                startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+            }
+        }.apply { textSize = 12f })
+
         // --- Produkt hinzufügen
         root.addView(label("Produkt hinzufügen"))
         // Shop-Auswahl: Amazon oder ein Web-Shop
@@ -195,8 +222,13 @@ class MainActivity : AppCompatActivity() {
         // --- Einstellungen
         root.addView(label("Einstellungen"))
         val inDomain = edit("Amazon-Domain (z. B. amazon.de)", InputType.TYPE_CLASS_TEXT, Store.domain(this))
+        val inAmazonInterval = edit(
+            "Amazon-Prüfintervall in Minuten (Dauerbetrieb, min. 1)",
+            InputType.TYPE_CLASS_NUMBER,
+            Store.amazonInterval(this).toString()
+        )
         val inInterval = edit(
-            "Prüfintervall in Minuten (min. 15)",
+            "Müller/MediaMarkt-Prüfintervall in Minuten (min. 5; ohne Dauerbetrieb min. 15)",
             InputType.TYPE_CLASS_NUMBER,
             Store.interval(this).toString()
         )
@@ -211,6 +243,7 @@ class MainActivity : AppCompatActivity() {
             Store.webhook(this)
         )
         root.addView(inDomain)
+        root.addView(inAmazonInterval)
         root.addView(inInterval)
         root.addView(inDrop)
         root.addView(inWebhook)
@@ -259,15 +292,19 @@ class MainActivity : AppCompatActivity() {
                 toast("Tipp: Erlaube „Über anderen Apps einblenden“, sonst öffnen sich Fenster im Hintergrund nur bei gesperrtem Bildschirm.")
             }
             val domain = inDomain.text.toString().trim().removePrefix("www.").ifEmpty { "amazon.de" }
-            val interval = (inInterval.text.toString().toIntOrNull() ?: 60).coerceAtLeast(15)
+            val interval = (inInterval.text.toString().toIntOrNull() ?: 60).coerceAtLeast(5)
+            Store.saveAmazonInterval(this, inAmazonInterval.text.toString().toIntOrNull() ?: 2)
             val drop = inDrop.text.toString().toIntOrNull() ?: 10
             Store.saveSettings(this, domain, interval, drop, inWebhook.text.toString().trim(), cbCart.isChecked)
             Store.saveAutoBuy(this, cbBuy.isChecked)
             toast(
-                "Überwachung läuft alle $interval Minuten." +
-                    if (cbBuy.isChecked) " Auto-Kauf erlaubt." else ""
+                "Gespeichert. Amazon alle ${Store.amazonInterval(this)} Min., Müller/MediaMarkt alle $interval Min." +
+                    (if (cbBuy.isChecked) " Auto-Kauf erlaubt." else "") +
+                    (if (!BotService.alive) " Für Prüfungen unter 15 Min. oben den Dauerbetrieb starten." else "")
             )
             schedule(interval, update = true)
+            // Dauerbetrieb starten, falls er laufen soll (übernimmt die neuen Intervalle sofort)
+            if (Store.botWanted(this) && !BotService.alive) BotService.start(this)
             refresh()
         })
         root.addView(button("Discord testen") {
@@ -363,7 +400,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         root.addView(button("Jetzt prüfen") {
-            val req = OneTimeWorkRequestBuilder<CheckWorker>().build()
+            val req = OneTimeWorkRequestBuilder<CheckWorker>().addTag(CheckWorker.TAG_NOW).build()
             val wm = WorkManager.getInstance(this)
             wm.enqueue(req)
             toast("Prüfung läuft …")
@@ -387,8 +424,45 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
+    // --- Anzeige „Bot läuft“
+    private lateinit var botView: TextView
+    private lateinit var botButton: Button
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val ticker = object : Runnable {
+        override fun run() {
+            updateBotView()
+            handler.postDelayed(this, 5_000)
+        }
+    }
+
+    private fun updateBotView() {
+        val running = BotService.alive
+        val wanted = Store.botWanted(this)
+        botView.text = when {
+            running -> "🟢 Bot läuft (Dauerbetrieb)\n" + BotService.summary(this) + "\nStatus: " + Store.status(this)
+            wanted -> "🟠 Bot soll laufen, wurde aber von Android beendet – „Dauerbetrieb starten“ tippen " +
+                "und die Akku-Optimierung ausschalten."
+            else -> "🔴 Dauerbetrieb aus – nur Prüfung alle ${Store.interval(this).coerceAtLeast(15)} Min. im Hintergrund " +
+                "(ungenau). Für Amazon alle ${Store.amazonInterval(this)} Min. Dauerbetrieb starten."
+        }
+        botView.setBackgroundColor(
+            when {
+                running -> 0x2233AA33
+                wanted -> 0x33FF9900
+                else -> 0x22CC3333
+            }
+        )
+        botButton.text = if (running) "Dauerbetrieb stoppen" else "Dauerbetrieb starten"
+    }
+
+    override fun onPause() {
+        super.onPause()
+        handler.removeCallbacks(ticker)
+    }
+
     override fun onResume() {
         super.onResume()
+        handler.post(ticker)
         overlayHint()
         refresh()
     }

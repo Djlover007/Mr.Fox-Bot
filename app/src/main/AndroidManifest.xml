@@ -7,6 +7,12 @@
     <!-- Fenster aus dem Hintergrund öffnen (bei Alarm / Auto-Kauf zuschauen) -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- Dauerbetrieb (Prüfung alle paar Minuten) mit fester Benachrichtigung -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- Prüfen, ob Chrome installiert ist -->
     <queries>
@@ -47,6 +53,23 @@
             android:exported="false"
             android:showWhenLocked="true"
             android:turnScreenOn="true" />
+
+        <service
+            android:name=".BotService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Preis- und Verfügbarkeitsüberwachung in kurzen Abständen" />
+        </service>
+
+        <receiver
+            android:name=".BotService$BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
     </application>
 
