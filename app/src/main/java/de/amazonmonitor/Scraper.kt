@@ -9,7 +9,32 @@ object Scraper {
      * [available]: true = kaufbar, false = Amazon meldet ausdrücklich „nicht verfügbar“,
      * null = unklar (z. B. Seite nicht erkannt). Bei null bleibt der alte Zustand erhalten.
      */
-    data class Result(val title: String, val price: Double?, val available: Boolean?)
+    data class Result(
+        val title: String,
+        val price: Double?,
+        val available: Boolean?,
+        /** OfferListingId des Angebots in der Kaufbox (null = nicht gefunden). */
+        val offerId: String? = null,
+        /** Verkäufer des Kaufbox-Angebots (null = nicht gefunden). */
+        val seller: String? = null,
+    )
+
+    // Zuerst im Warenkorb-Formular der Kaufbox suchen, damit nicht das Angebot eines anderen Artikels
+    // (Zubehör, „Wird oft zusammen gekauft“) erwischt wird.
+    private val OFFER_SELECTORS = listOf(
+        "#addToCart input[name=offerListingID]",
+        "#addToCart input[name='items[0.base][offerListingId]']",
+        "#buybox input[name=offerListingID]",
+        "#buybox input[name='items[0.base][offerListingId]']",
+        "input#offerListingID",
+    )
+
+    private val SELLER_SELECTORS = listOf(
+        "#sellerProfileTriggerId",
+        "#merchantInfoFeature_feature_div .offer-display-feature-text-message",
+        "#merchant-info a",
+        "#merchant-info",
+    )
 
     private const val UA =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
@@ -30,6 +55,29 @@ object Scraper {
 
     private val ASIN_URL = Regex("/(?:dp|gp/product)/([A-Za-z0-9]{10})")
     private val ASIN_PLAIN = Regex("^[A-Za-z0-9]{10}$")
+
+    private val OFFER_URL = Regex("(?i)offerlistingid(?:\\.1)?=([^&\\s#]+)")
+
+    /**
+     * Einheitliche Form einer OfferListingId (dekodiert), damit festgehaltene und ausgelesene IDs
+     * vergleichbar sind. Ein wörtliches „+“ bleibt „+“ (wird nicht zum Leerzeichen).
+     */
+    fun normOffer(id: String?): String? {
+        val s = id?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        return try {
+            java.net.URLDecoder.decode(s.replace("+", "%2B"), "UTF-8")
+        } catch (e: Exception) {
+            s
+        }
+    }
+
+    /** OfferListingId aus einem Link (…OfferListingId.1=… oder …offerListingId=…) oder als reine ID. */
+    fun extractOfferId(input: String): String? {
+        val s = input.trim()
+        if (s.isEmpty()) return null
+        OFFER_URL.find(s)?.let { return normOffer(it.groupValues[1]) }
+        return if (s.contains("/") || s.contains(" ")) null else normOffer(s)
+    }
 
     fun extractAsin(input: String): String? {
         val s = input.trim()
@@ -112,6 +160,12 @@ object Scraper {
             price != null || hasCartButton -> true
             else -> null
         }
-        return Result(title, price, available)
+        val offerId = OFFER_SELECTORS.firstNotNullOfOrNull { sel ->
+            normOffer(doc.selectFirst(sel)?.attr("value"))
+        }
+        val seller = SELLER_SELECTORS.firstNotNullOfOrNull { sel ->
+            doc.selectFirst(sel)?.text()?.trim()?.takeIf { it.isNotEmpty() }
+        }?.take(60)
+        return Result(title, price, available, offerId, seller)
     }
 }

@@ -43,8 +43,23 @@ object CartAdder {
             "for(var i=0;i<ids.length;i++){if(document.getElementById(ids[i]))return 'ok';}" +
             "return 'no';})()"
 
+    /** Bestätigungsseite von /gp/aws/cart/add.html: „Weiter/In den Einkaufswagen“ drücken. */
+    private const val AWS_CONFIRM_JS =
+        "(function(){" +
+            "if(document.getElementById('captchacharacters')||" +
+            "document.querySelector('form[action*=\"validateCaptcha\"]'))return 'captcha';" +
+            "var sel=['input[name=\"add\"]','form[action*=\"cart/add\"] input[type=\"submit\"]'," +
+            "'form[action*=\"cart\"] input[type=\"image\"]'];" +
+            "for(var i=0;i<sel.length;i++){var b=document.querySelector(sel[i]);" +
+            "if(b){b.click();return 'clicked';}}" +
+            "return 'none';})()"
+
+    /**
+     * @param offerId OfferListingId: wenn bekannt, wird genau dieses Angebot direkt über den
+     * Warenkorb-Link hinzugefügt (schnell, ohne Produktseite). Klappt das nicht, normaler Weg über die Produktseite.
+     */
     @SuppressLint("SetJavaScriptEnabled")
-    suspend fun add(ctx: Context, domain: String, asin: String): Result =
+    suspend fun add(ctx: Context, domain: String, asin: String, offerId: String? = null): Result =
         withContext(Dispatchers.Main) {
             withTimeoutOrNull(90_000L) {
                 suspendCancellableCoroutine<Result> { cont ->
@@ -74,6 +89,27 @@ object CartAdder {
                     }
 
                     val productUrl = "https://www.$domain/dp/$asin"
+                    // Schneller Weg über OfferListingId: stage 10 = Link geladen, 11 = bestätigt.
+                    val fastUrl = offerId?.let { Checker.cartUrl(domain, asin, it) }
+                    var fastFailed = fastUrl == null
+
+                    /** Startet (neu): schneller Weg, solange er nicht gescheitert ist, sonst Produktseite. */
+                    fun start() {
+                        if (!fastFailed && fastUrl != null) {
+                            stage = 10
+                            web.loadUrl(fastUrl)
+                        } else {
+                            stage = 0
+                            web.loadUrl(productUrl)
+                        }
+                    }
+
+                    fun fallback() {
+                        fastFailed = true
+                        start()
+                    }
+
+                    val fastTimeout = Runnable { if (stage == 11 && cont.isActive) fallback() }
                     val login = AutoLogin.Session()
                     var loginRunning = false
                     var reloadedAfterLogin = false
@@ -88,10 +124,10 @@ object CartAdder {
                                     handler.postDelayed({ loginLoop() }, 2000)
                                 AutoLogin.State.NOT_LOGIN_PAGE -> {
                                     loginRunning = false
-                                    if (web.url?.contains("/dp/") != true && !reloadedAfterLogin) {
+                                    val u = web.url ?: ""
+                                    if (!u.contains("/dp/") && !u.contains("/aws/cart/add") && !reloadedAfterLogin) {
                                         reloadedAfterLogin = true
-                                        stage = 0
-                                        web.loadUrl(productUrl)
+                                        start()
                                     }
                                 }
                                 else -> done(Result.NOT_LOGGED_IN, AutoLogin.explain(st))
@@ -128,6 +164,22 @@ object CartAdder {
                                     loginRunning = true
                                     loginLoop()
                                 }
+                            } else if (stage == 10 && url.contains("/aws/cart/add")) {
+                                stage = 11
+                                view.evaluateJavascript(AWS_CONFIRM_JS) { res ->
+                                    if (!cont.isActive) return@evaluateJavascript
+                                    when {
+                                        res != null && res.contains("clicked") ->
+                                            handler.postDelayed(fastTimeout, 15_000)
+                                        res != null && res.contains("captcha") ->
+                                            done(Result.FAILED, CAPTCHA_DETAIL)
+                                        else -> fallback()
+                                    }
+                                }
+                            } else if (stage == 11 && !url.contains("/aws/cart/add") &&
+                                (url.contains("/huc/") || url.contains("/cart"))
+                            ) {
+                                done(Result.OK, "Angebot per OfferListingId in den Warenkorb gelegt")
                             } else if (stage == 0 && url.contains("/dp/")) {
                                 stage = 1
                                 view.evaluateJavascript(CLICK_JS) { res ->
@@ -144,13 +196,15 @@ object CartAdder {
                                         )
                                     }
                                 }
-                            } else if (stage == 1 && (url.contains("/huc/") || url.contains("/cart"))) {
+                            } else if (stage == 1 && !url.contains("/aws/cart/add") &&
+                                (url.contains("/huc/") || url.contains("/cart"))
+                            ) {
                                 done(Result.OK, "Weiterleitung zum Warenkorb")
                             }
                         }
                     }
 
-                    web.loadUrl(productUrl)
+                    start()
                 }
             } ?: run {
                 lastDetail = "Zeitüberschreitung"

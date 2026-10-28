@@ -18,6 +18,16 @@ wieder verfügbar).
 - Optional: **Auto-Kauf** – bestellt ein Produkt selbstständig, sobald der Zielpreis erreicht ist
   (mit Höchstbetrag, Probelauf und nur einem Versuch, siehe unten)
 
+## OfferListingId (Angebot / Verkäufer)
+- Bei jeder Prüfung liest die App die **OfferListingId** und den Verkäufer des Angebots in der Kaufbox aus.
+- „In den Warenkorb“ (Button und Benachrichtigung) legt genau dieses Angebot in den Warenkorb.
+  Der automatische Warenkorb nutzt dafür den schnellen Weg über den Warenkorb-Link (ohne Produktseite)
+  und fällt sonst auf die Produktseite zurück.
+- **Angebot festhalten:** Button „Aktuelles Angebot festhalten“ beim Produkt, oder beim Hinzufügen eine
+  OfferListingId eintragen (auch ein Link mit `OfferListingId.1=…` wird erkannt). Dann kauft Auto-Kauf
+  nur, wenn genau dieses Angebot in der Kaufbox liegt (z. B. nur „Verkauf durch Amazon“); sonst wartet
+  er scharf auf die nächste Prüfung.
+
 ## Fenster
 Unter Einstellungen → „Fenster“:
 - **Bei Alarm Amazon automatisch öffnen:** öffnet die Produktseite, nach einem Auto-Kauf die Bestellübersicht.

@@ -88,9 +88,11 @@ class MainActivity : AppCompatActivity() {
             "Zielpreis in € (optional)",
             InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
         )
+        val inOffer = edit("OfferListingId (optional – hält genau dieses Angebot fest)")
         root.addView(inUrl)
         root.addView(inName)
         root.addView(inTarget)
+        root.addView(inOffer)
         root.addView(button("Hinzufügen") {
             val asin = Scraper.extractAsin(inUrl.text.toString())
             if (asin == null) {
@@ -98,10 +100,15 @@ class MainActivity : AppCompatActivity() {
             } else {
                 val target = inTarget.text.toString().replace(',', '.').toDoubleOrNull()
                 val name = inName.text.toString().trim().ifEmpty { asin }
-                Store.add(this, Product(asin, name, target))
+                // OfferListingId aus eigenem Feld oder aus dem eingefügten Link (falls dort enthalten).
+                val offer = Scraper.extractOfferId(inOffer.text.toString())
+                    ?: Regex("(?i)offerlistingid").find(inUrl.text)?.let { Scraper.extractOfferId(inUrl.text.toString()) }
+                Store.add(this, Product(asin, name, target, pinnedOffer = offer))
                 inUrl.setText("")
                 inName.setText("")
                 inTarget.setText("")
+                inOffer.setText("")
+                if (offer != null) toast("Angebot (OfferListingId) festgehalten.")
                 schedule(Store.interval(this), update = false)
                 refresh()
             }
@@ -292,6 +299,38 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    /** Hält das zuletzt gesehene Kaufbox-Angebot (OfferListingId) fest bzw. gibt es wieder frei. */
+    private fun togglePin(p: Product) {
+        if (p.pinnedOffer != null) {
+            Store.update(this, p.asin) { it.pinnedOffer = null; it.pinnedSeller = "" }
+            toast("Angebot freigegeben – Auto-Kauf nimmt wieder das Angebot in der Kaufbox.")
+            refresh()
+            return
+        }
+        val offer = p.offerId
+        if (offer == null) {
+            toast("Noch keine OfferListingId bekannt. Erst „Jetzt prüfen“, oder die ID beim Hinzufügen eintragen.")
+            return
+        }
+        val who = p.seller.ifEmpty { "unbekannter Verkäufer" }
+        AlertDialog.Builder(this)
+            .setTitle("Angebot festhalten?")
+            .setMessage(
+                "Aktuelles Kaufbox-Angebot: $who" +
+                    (p.lastPrice?.let { ", ${money(it)}" } ?: "") + "\n\n" +
+                    "Auto-Kauf kauft dann nur, wenn genau dieses Angebot in der Kaufbox liegt. " +
+                    "„In den Warenkorb“ legt genau dieses Angebot hinein.\n\nOfferListingId:\n$offer"
+            )
+            .setPositiveButton("Festhalten") { _, _ ->
+                Store.update(this, p.asin) { it.pinnedOffer = offer; it.pinnedSeller = p.seller }
+                toast("Angebot festgehalten.")
+                refresh()
+            }
+            .setNegativeButton("Abbrechen", null)
+            .show()
+            .findViewById<TextView>(android.R.id.message)?.setTextIsSelectable(true)
+    }
+
     private fun toggleAutoBuy(p: Product) {
         if (p.autoBuy) {
             Store.update(this, p.asin) { it.autoBuy = false }
@@ -353,7 +392,7 @@ class MainActivity : AppCompatActivity() {
             val cart = Button(this).apply {
                 text = "In den Warenkorb"
                 setOnClickListener {
-                    openWeb(Checker.cartUrl(Store.domain(this@MainActivity), p.asin))
+                    openWeb(Checker.cartUrl(Store.domain(this@MainActivity), p.asin, p.cartOffer))
                 }
             }
             val cartTest = Button(this).apply {
@@ -363,7 +402,7 @@ class MainActivity : AppCompatActivity() {
                     toast("Test läuft, bitte etwa 20–60 Sekunden warten …")
                     CoroutineScope(Dispatchers.Main).launch {
                         val res = try {
-                            CartAdder.add(this@MainActivity, Store.domain(this@MainActivity), p.asin)
+                            CartAdder.add(this@MainActivity, Store.domain(this@MainActivity), p.asin, p.cartOffer)
                         } catch (e: Exception) {
                             CartAdder.lastDetail = e.message ?: "Fehler"
                             CartAdder.Result.FAILED
@@ -430,6 +469,10 @@ class MainActivity : AppCompatActivity() {
             row.addView(cartTest)
             row.addView(checkout)
             row.addView(arm)
+            row.addView(Button(this).apply {
+                text = if (p.pinnedOffer != null) "Angebot freigeben (jedes Angebot)" else "Aktuelles Angebot festhalten"
+                setOnClickListener { togglePin(p) }
+            })
             row.addView(dry)
             row.addView(del)
             listBox.addView(row)

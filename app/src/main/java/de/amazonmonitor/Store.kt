@@ -29,8 +29,23 @@ class Product(
     var autoBuy: Boolean = false,
     var lastBuyAttempt: Long = 0L,
     var lastBuyResult: String = "",
+    /** OfferListingId des zuletzt gesehenen Kaufbox-Angebots. */
+    var offerId: String? = null,
+    /** Verkäufer des zuletzt gesehenen Kaufbox-Angebots. */
+    var seller: String = "",
+    /** Festgehaltenes Angebot: Auto-Kauf nur, wenn genau dieses in der Kaufbox liegt. */
+    var pinnedOffer: String? = null,
+    /** Verkäufer des festgehaltenen Angebots (nur zur Anzeige). */
+    var pinnedSeller: String = "",
 ) {
+    /** Angebot für den Warenkorb: festgehaltenes, sonst das zuletzt gesehene. */
+    val cartOffer: String? get() = pinnedOffer ?: offerId
+
     fun toJson(): JSONObject = JSONObject()
+        .put("offerId", offerId ?: JSONObject.NULL)
+        .put("seller", seller)
+        .put("pinnedOffer", pinnedOffer ?: JSONObject.NULL)
+        .put("pinnedSeller", pinnedSeller)
         .put("autoBuy", autoBuy)
         .put("lastBuyAttempt", lastBuyAttempt)
         .put("lastBuyResult", lastBuyResult)
@@ -58,6 +73,14 @@ class Product(
             if (mp != null) sb.append("\nTiefstpreis: ${money(mp)}")
             sb.append("\nGeprüft: ${SimpleDateFormat("dd.MM. HH:mm", Locale.GERMANY).format(Date(lastCheck))}")
         }
+        if (seller.isNotEmpty()) sb.append("\nVerkauf: ").append(seller)
+        val pin = pinnedOffer
+        if (pin != null) {
+            sb.append("\n📌 Angebot festgehalten")
+            if (pinnedSeller.isNotEmpty()) sb.append(" (").append(pinnedSeller).append(")")
+            val cur = offerId
+            if (cur != null && cur != pin) sb.append(" – gerade liegt ein ANDERES Angebot in der Kaufbox")
+        }
         if (autoBuy) sb.append("\n🛒 Auto-Kauf scharf")
         if (lastBuyResult.isNotEmpty()) {
             sb.append("\nLetzter Auto-Kauf (")
@@ -81,7 +104,14 @@ class Product(
             autoBuy = o.optBoolean("autoBuy", false),
             lastBuyAttempt = o.optLong("lastBuyAttempt", 0L),
             lastBuyResult = o.optString("lastBuyResult", ""),
+            offerId = o.optS("offerId"),
+            seller = o.optString("seller", ""),
+            pinnedOffer = o.optS("pinnedOffer"),
+            pinnedSeller = o.optString("pinnedSeller", ""),
         )
+
+        private fun JSONObject.optS(k: String): String? =
+            if (!has(k) || isNull(k)) null else getString(k).takeIf { it.isNotEmpty() }
 
         private fun JSONObject.optD(k: String): Double? = if (isNull(k)) null else getDouble(k)
     }

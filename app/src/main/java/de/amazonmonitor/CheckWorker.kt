@@ -64,6 +64,9 @@ object Checker {
             // Unklarer Zustand (null) überschreibt den bekannten nicht.
             val nowAvail = r.available
             if (nowAvail != null) p.available = nowAvail
+            // Kaufbox-Angebot merken (nur überschreiben, wenn etwas gefunden wurde).
+            r.offerId?.let { p.offerId = it }
+            r.seller?.let { p.seller = it }
 
             var text: String? = null
             val price = r.price
@@ -87,8 +90,13 @@ object Checker {
             // Auto-Kauf: nur wenn Hauptschalter an, Produkt scharf, verfügbar und Preis ≤ Ziel und ≤ Limit.
             // Wird hier (atomar) sofort entschärft, damit höchstens EIN Kaufversuch passiert.
             val t = p.target
-            val buyNow = autoBuyOn && p.autoBuy && nowAvail == true &&
+            val priceOk = autoBuyOn && p.autoBuy && nowAvail == true &&
                 price != null && t != null && price <= t && price <= cap
+            // Festgehaltenes Angebot: nur kaufen, wenn genau dieses in der Kaufbox liegt.
+            // Sonst bleibt Auto-Kauf scharf und wartet auf die nächste Prüfung.
+            val pin = p.pinnedOffer
+            val offerMismatch = priceOk && pin != null && r.offerId != pin
+            val buyNow = priceOk && !offerMismatch
             if (buyNow) {
                 p.autoBuy = false
                 p.lastBuyAttempt = System.currentTimeMillis()
@@ -98,15 +106,21 @@ object Checker {
                     p.lastAlertPrice = price
                 }
             }
-            Pair(text, buyNow)
+            Triple(text, buyNow, offerMismatch)
         } ?: return
-        val (alert, buyNow) = upd
+        val (alert, buyNow, offerMismatch) = upd
 
         if (alert != null) {
-            val name = Store.load(ctx).firstOrNull { it.asin == asin }?.name ?: r.title
+            val product = Store.load(ctx).firstOrNull { it.asin == asin }
+            val name = product?.name ?: r.title
+            val offer = product?.cartOffer
             val url = "https://www.$domain/dp/$asin"
-            val cart = cartUrl(domain, asin)
+            val cart = cartUrl(domain, asin, offer)
             var message: String = alert
+            if (offerMismatch) {
+                message += "\n⏸ Auto-Kauf wartet: in der Kaufbox liegt nicht das festgehaltene Angebot" +
+                    (r.seller?.let { " (gerade: $it)" } ?: "")
+            }
             // Welche Seite bei „Bei Alarm automatisch öffnen“ gezeigt wird (null = nichts öffnen).
             var openUrl: String? = if (Store.openOnAlert(ctx)) url else null
 
@@ -130,7 +144,7 @@ object Checker {
                 }
             } else if (Store.autoCart(ctx)) {
                 val res = try {
-                    CartAdder.add(ctx, domain, asin)
+                    CartAdder.add(ctx, domain, asin, offer)
                 } catch (e: Exception) {
                     CartAdder.Result.FAILED
                 }
@@ -159,9 +173,20 @@ object Checker {
         }
     }
 
-    /** Link, der den Artikel in den Warenkorb legt (du bestellst danach selbst). */
-    fun cartUrl(domain: String, asin: String): String =
-        "https://www.$domain/gp/aws/cart/add.html?ASIN.1=$asin&Quantity.1=1"
+    /**
+     * Link, der den Artikel in den Warenkorb legt (du bestellst danach selbst).
+     * Mit [offerId] (OfferListingId) genau dieses Angebot/diesen Verkäufer, sonst das Kaufbox-Angebot.
+     */
+    fun cartUrl(domain: String, asin: String, offerId: String? = null): String =
+        if (offerId != null) {
+            "https://www.$domain/gp/aws/cart/add.html?OfferListingId.1=${encodeOffer(offerId)}&Quantity.1=1"
+        } else {
+            "https://www.$domain/gp/aws/cart/add.html?ASIN.1=$asin&Quantity.1=1"
+        }
+
+    /** IDs werden dekodiert gespeichert (siehe [Scraper.normOffer]); für den Link einmal kodieren. */
+    fun encodeOffer(id: String): String =
+        java.net.URLEncoder.encode(Scraper.normOffer(id) ?: id, "UTF-8")
 
     /** Warenkorbseite; von dort geht es mit "Zur Kasse gehen" weiter. */
     fun checkoutUrl(domain: String): String = "https://www.$domain/gp/cart/view.html"
