@@ -12,7 +12,9 @@ wieder verfügbar).
 - Automatische Amazon-Anmeldung: Zugang (E-Mail/Passwort) verschlüsselt im Android-Tresor; die App meldet
   sich im App-Fenster, beim Auto-Kauf und beim automatischen Warenkorb selbst an (auch wenn Amazon vor der
   Kasse erneut das Passwort will). Nicht automatisch gehen: Captcha, Bestätigungscode (Zwei-Schritt-
-  Verifizierung) und Freigabe per Amazon-App/SMS – dann einmal über „Bei Amazon anmelden“ selbst bestätigen.
+  Verifizierung) und Freigabe per Amazon-App/SMS – dann einmal über „In der App anmelden“ selbst bestätigen.
+- „Bei Amazon anmelden (Chrome)“ öffnet die Anmeldung in Chrome (Chromes Passwortmanager füllt aus).
+  Auto-Kauf und automatischer Warenkorb nutzen davon unabhängig die Anmeldung der App.
 - Optional: Artikel bei Alarm automatisch in den Warenkorb legen (Testbutton pro Produkt)
 - „Zur Kasse“ öffnet nur den Bezahlvorgang, das endgültige „Jetzt kaufen“ tippst du selbst
 - Optional: **Auto-Kauf** – bestellt ein Produkt selbstständig, sobald der Zielpreis erreicht ist
@@ -40,7 +42,6 @@ Unter Einstellungen → „Fenster“:
   Das Fenster bleibt am Ende offen. Schließt du es mittendrin, wird abgebrochen.
 - **Links in Chrome öffnen:** Buttons in App und Benachrichtigung öffnen Chrome statt des App-Fensters.
   Chrome hat eine eigene Amazon-Anmeldung, und „Zur Kasse“ wird dort nicht automatisch geklickt.
-  „Bei Amazon anmelden“ öffnet immer das App-Fenster, weil Auto-Kauf und Warenkorb dessen Anmeldung nutzen.
 
 Android lässt Apps aus dem Hintergrund keine Fenster öffnen. Gib deshalb über den Knopf die Erlaubnis
 **„Über anderen Apps einblenden“**. Ohne sie öffnet sich das Fenster bei Alarm nur bei gesperrtem

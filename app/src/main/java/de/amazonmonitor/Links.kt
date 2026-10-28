@@ -31,6 +31,17 @@ object Links {
             inApp(ctx, url, checkout)
         }
 
+    /** Immer in Chrome öffnen (unabhängig von der Einstellung); ohne Chrome im Standard-Browser. */
+    fun openInChrome(ctx: Context, url: String) {
+        val i = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        if (chromeInstalled(ctx)) i.setPackage(CHROME)
+        try {
+            ctx.startActivity(i)
+        } catch (e: Exception) {
+            ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        }
+    }
+
     /** Aus einer Activity heraus öffnen. */
     fun open(ctx: Context, url: String, checkout: Boolean = false) {
         try {

@@ -220,7 +220,7 @@ object Checker {
                 }
                 message += when (res) {
                     CartAdder.Result.OK -> "\n✅ Automatisch in den Warenkorb gelegt"
-                    CartAdder.Result.NOT_LOGGED_IN -> "\n⚠️ Nicht bei Amazon angemeldet – bitte in der App anmelden"
+                    CartAdder.Result.NOT_LOGGED_IN -> "\n⚠️ Nicht bei Amazon angemeldet: ${CartAdder.lastDetail}"
                     CartAdder.Result.FAILED ->
                         "\n⚠️ Automatisch in den Warenkorb legen hat nicht geklappt (${CartAdder.lastDetail}) – nutze den Link"
                 }

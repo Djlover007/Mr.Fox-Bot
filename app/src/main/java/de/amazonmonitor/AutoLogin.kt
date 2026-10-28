@@ -133,9 +133,9 @@ object AutoLogin {
     /** Erklärung für Meldungen, wenn die Anmeldung nicht automatisch geht. */
     fun explain(s: State): String = when (s) {
         State.NO_CREDENTIALS -> "Amazon verlangt eine Anmeldung, aber in der App ist kein Zugang (E-Mail/Passwort) gespeichert"
-        State.CAPTCHA -> "Amazon zeigt bei der Anmeldung ein Captcha – einmal in der App über „Bei Amazon anmelden“ lösen"
-        State.OTP -> "Amazon verlangt einen Bestätigungscode (Zwei-Schritt-Verifizierung) – einmal in der App anmelden"
-        State.VERIFY -> "Amazon will die Anmeldung bestätigt haben (App/SMS/E-Mail) – einmal in der App anmelden"
+        State.CAPTCHA -> "Amazon zeigt bei der Anmeldung ein Captcha – einmal über „In der App anmelden“ lösen"
+        State.OTP -> "Amazon verlangt einen Bestätigungscode (Zwei-Schritt-Verifizierung) – einmal über „In der App anmelden“ eingeben"
+        State.VERIFY -> "Amazon will die Anmeldung bestätigt haben (App/SMS/E-Mail) – einmal über „In der App anmelden“ bestätigen"
         State.GAVE_UP -> "Automatische Anmeldung hat nicht geklappt (Passwort prüfen)"
         else -> "Amazon verlangt eine Anmeldung"
     }

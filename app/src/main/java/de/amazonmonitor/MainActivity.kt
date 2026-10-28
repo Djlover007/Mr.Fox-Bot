@@ -266,9 +266,7 @@ class MainActivity : AppCompatActivity() {
             } else {
                 Store.saveLogin(this, mail, if (pw.isEmpty()) null else pw)
                 inPw.setText("")
-                toast("Zugang verschlüsselt gespeichert. Melde jetzt automatisch an …")
-                // Gleich anmelden, damit die Sitzung für Auto-Kauf und Warenkorb steht.
-                startActivity(Links.inApp(this, "https://www.${Store.domain(this)}/gp/sign-in.html"))
+                toast("Zugang verschlüsselt gespeichert. Auto-Kauf und Warenkorb melden sich damit bei Bedarf selbst an.")
             }
         })
         root.addView(button("Zugang löschen") {
@@ -278,10 +276,14 @@ class MainActivity : AppCompatActivity() {
             toast("Zugang gelöscht.")
         })
 
-        root.addView(button("Bei Amazon anmelden") {
-            // Immer im App-Fenster: Auto-Kauf und Warenkorb nutzen die Anmeldung der App.
-            startActivity(Links.inApp(this, "https://www.${Store.domain(this)}/gp/sign-in.html"))
+        root.addView(button("Bei Amazon anmelden (Chrome)") {
+            // Anmeldung in Chrome – Chromes Passwortmanager kann die Daten ausfüllen.
+            Links.openInChrome(this, "https://www.${Store.domain(this)}/gp/sign-in.html")
         })
+        root.addView(button("In der App anmelden (nur nötig bei Code/Captcha für Auto-Kauf)") {
+            // Auto-Kauf und automatischer Warenkorb nutzen die Anmeldung der App, nicht die von Chrome.
+            startActivity(Links.inApp(this, "https://www.${Store.domain(this)}/gp/sign-in.html"))
+        }.apply { textSize = 12f })
 
         root.addView(button("Jetzt prüfen") {
             val req = OneTimeWorkRequestBuilder<CheckWorker>().build()
@@ -433,7 +435,7 @@ class MainActivity : AppCompatActivity() {
                         isEnabled = true
                         val text = when (res) {
                             CartAdder.Result.OK -> "✅ Im Warenkorb: ${CartAdder.lastDetail}"
-                            CartAdder.Result.NOT_LOGGED_IN -> "⚠️ Nicht angemeldet. Erst „Bei Amazon anmelden“ nutzen."
+                            CartAdder.Result.NOT_LOGGED_IN -> "⚠️ Nicht angemeldet: ${CartAdder.lastDetail}"
                             CartAdder.Result.FAILED -> "⚠️ Nicht geklappt: ${CartAdder.lastDetail}"
                         }
                         toast(text)
