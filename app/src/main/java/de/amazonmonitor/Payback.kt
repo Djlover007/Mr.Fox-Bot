@@ -49,10 +49,13 @@ object Payback {
             cm.setPrimaryClip(ClipData.newPlainText("Produkt", productName))
             Toast.makeText(
                 ctx,
-                "Produktname kopiert. In Payback „Jetzt shoppen“ tippen, dann im Shop in die Suche einfügen.",
+                if (PaybackClicker.isEnabled(ctx)) "Produktname kopiert. Payback leitet automatisch zum Shop weiter – dort in die Suche einfügen."
+                else "Produktname kopiert. In Payback „Zur Amazon-App“ tippen, dann im Shop in die Suche einfügen.",
                 Toast.LENGTH_LONG
             ).show()
         }
+        // Payback-Automatik (Bedienungshilfe) kurz scharf machen: drückt dann „Zur Amazon-App“.
+        if (PaybackClicker.isEnabled(ctx)) PaybackClicker.arm(ctx)
         try {
             ctx.startActivity(viewIntent(ctx, url).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } catch (e: Exception) {

@@ -403,6 +403,16 @@ class MainActivity : AppCompatActivity() {
                 "Der Auto-Kauf läuft ohne Payback (ohne °Punkte)."
             textSize = 12f
         })
+        // Payback-Automatik (Bedienungshilfe): drückt in der Payback-App „Zur Amazon-App“
+        paybackAutoBtn = button("") {
+            try {
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                toast("„Mr.Fox Bot – Payback-Automatik“ antippen und einschalten. Falls gesperrt: App-Info → ⋮ → „Eingeschränkte Einstellungen zulassen“.")
+            } catch (e: Exception) {
+                toast("Bitte unter Einstellungen → Bedienungshilfen einschalten.")
+            }
+        }
+        root.addView(paybackAutoBtn)
         for (key in listOf(Product.SHOP_AMAZON, Product.SHOP_MEDIAMARKT)) {
             root.addView(CheckBox(this).apply {
                 text = "${Payback.label(key)}: Payback-Knopf anzeigen"
@@ -453,6 +463,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private lateinit var paybackAutoBtn: Button
+
+    private fun updatePaybackAuto() {
+        paybackAutoBtn.text = if (PaybackClicker.isEnabled(this))
+            "✅ Payback-Automatik an (drückt „Zur Amazon-App“) – Einstellungen öffnen"
+        else "Payback-Automatik einschalten (Bedienungshilfe)"
+    }
+
     private fun updateBotView() {
         val running = BotService.alive
         val wanted = Store.botWanted(this)
@@ -482,6 +500,7 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         handler.post(ticker)
         overlayHint()
+        updatePaybackAuto()
         refresh()
     }
 

@@ -75,6 +75,12 @@ App-Browser blockt Payback). Deshalb halbautomatisch:
 3. In Payback **„Jetzt shoppen“** tippen, im Shop bzw. in dessen App den Namen in die Suche einfügen, kaufen.
    (Laut Payback zählt auch die Amazon-App.) Coupons vorher in der Payback-App aktivieren.
 
+**Payback-Automatik (optional):** Knopf „Payback-Automatik einschalten“ → in den Bedienungshilfen
+„Mr.Fox Bot – Payback-Automatik“ einschalten (falls gesperrt: App-Info → ⋮ → „Eingeschränkte
+Einstellungen zulassen“). Danach drückt sie nach „Über Payback kaufen“ in der Payback-App sichtbare
+„Aktivieren“-Coupons und einmal „Zur Amazon-App“/„Zur MediaMarkt-App“. Sie wirkt nur in der Payback-App
+und nur 90 Sekunden nach dem Tippen in Mr.Fox Bot.
+
 Der **Auto-Kauf** läuft unabhängig davon ohne Payback, also ohne °Punkte. Müller ist kein Payback-Partner.
 
 ## OfferListingId (Angebot / Verkäufer)
@@ -158,6 +164,7 @@ app/src/main/java/de/amazonmonitor/
     Shops.kt          Web-Shops (Müller, MediaMarkt): Links erkennen, Produkt-/Kategorieseiten auslesen
     ShopBuyer.kt      Web-Shops: Warenkorb und Auto-Kauf
     BotService.kt     Dauerbetrieb mit fester Benachrichtigung (kurze Prüfintervalle)
+    PaybackClicker.kt Payback-Automatik (Bedienungshilfe): „Zur Amazon-App“ drücken
     Payback.kt        PAYBACK: Payback-App beim Shop öffnen, Produktname kopieren
 ```
 

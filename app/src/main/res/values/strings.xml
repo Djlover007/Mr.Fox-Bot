@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Mr.Fox Bot</string>
+    <string name="payback_accessibility_desc">Mr.Fox Bot – Payback-Automatik: Wirkt nur in der Payback-App und nur direkt nachdem du in Mr.Fox Bot „Über Payback kaufen“ getippt hast. Dann aktiviert sie sichtbare Coupons und drückt einmal „Zur Amazon-App“ bzw. „Zur MediaMarkt-App“. Sonst tut sie nichts.</string>
+    <string name="payback_accessibility_label">Mr.Fox Bot – Payback-Automatik</string>
 </resources>
