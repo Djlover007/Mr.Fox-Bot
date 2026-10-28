@@ -127,6 +127,56 @@ object WebShops {
         android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(web, true)
     }
 
+    private const val DESKTOP_UA =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+
+    /**
+     * Stimmige Desktop-Ansicht (für die Payback-Shopseite – auf dem Handy bietet payback.de dort nur
+     * „App herunterladen“). Neben der Kennung werden auch die übrigen Browser-Angaben (Plattform,
+     * „mobil“, Touch) auf Windows-PC gestellt, sonst lehnt Cloudflare den Widerspruch ab.
+     * Nur für [originRule] (z. B. "https://*.payback.de").
+     */
+    fun setupDesktop(ctx: Context, web: WebView, originRule: String) {
+        setup(ctx, web)
+        web.settings.userAgentString = DESKTOP_UA
+        web.settings.useWideViewPort = true
+        web.settings.loadWithOverviewMode = true
+        try {
+            if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.USER_AGENT_METADATA)) {
+                fun brand(b: String, major: String, full: String) =
+                    androidx.webkit.UserAgentMetadata.BrandVersion.Builder()
+                        .setBrand(b).setMajorVersion(major).setFullVersion(full).build()
+                val md = androidx.webkit.UserAgentMetadata.Builder()
+                    .setBrandVersionList(
+                        listOf(
+                            brand("Chromium", "130", "130.0.0.0"),
+                            brand("Google Chrome", "130", "130.0.0.0"),
+                            brand("Not?A_Brand", "99", "99.0.0.0"),
+                        )
+                    )
+                    .setFullVersion("130.0.0.0")
+                    .setPlatform("Windows")
+                    .setPlatformVersion("15.0.0")
+                    .setArchitecture("x86")
+                    .setModel("")
+                    .setMobile(false)
+                    .setBitness(64)
+                    .build()
+                androidx.webkit.WebSettingsCompat.setUserAgentMetadata(web.settings, md)
+            }
+            if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                androidx.webkit.WebViewCompat.addDocumentStartJavaScript(
+                    web,
+                    "try{Object.defineProperty(navigator,'platform',{get:function(){return 'Win32';}});" +
+                        "Object.defineProperty(navigator,'maxTouchPoints',{get:function(){return 0;}});}catch(e){}",
+                    setOf(originRule)
+                )
+            }
+        } catch (e: Exception) {
+            // Ältere Android-Browser: nur die Kennung wird umgestellt.
+        }
+    }
+
     /**
      * App-Links (intent://, market://, payback:// …) kann das App-Fenster nicht öffnen.
      * Gibt true zurück, wenn [url] abgefangen wurde: mit Web-Ersatzadresse wird diese geladen,

@@ -23,6 +23,7 @@ import kotlin.coroutines.resume
  */
 object Payback {
     const val LOGIN_URL = "https://www.payback.de/login"
+    private const val ORIGIN = "https://*.payback.de"
 
     /** Payback-Partner: Shop-Schlüssel → Payback-Shopseite und Ziel-Domain. */
     private val PARTNERS = mapOf(
@@ -52,6 +53,7 @@ object Payback {
         "if(security())return 'security';" +
         "var pw=document.querySelector('input[type=password]');if(pw&&vis(pw))return 'login';" +
         "if(location.href.indexOf('/login')>=0)return 'login';" +
+        "if(btn(/^(zur payback app|payback app download)${'$'}/i))return 'app';" +
         "if(btn(/^(jetzt shoppen|zum shop|jetzt einkaufen|shoppen)${'$'}/i))return 'shop';return 'wait';})()"
 
     /** „Jetzt shoppen“ drücken; Pop-up-Fenster werden in dasselbe Fenster umgeleitet. */
@@ -77,7 +79,7 @@ object Payback {
         return mutex.withLock {
             withContext(Dispatchers.Main) {
                 val watch = if (visible) WatchActivity.open(ctx) else null
-                watch?.let { WebShops.setup(ctx, it.web) }
+                watch?.let { WebShops.setupDesktop(ctx, it.web, ORIGIN) }
                 val r = withTimeoutOrNull(60_000L) { execute(ctx, watch, page, domain) }
                     ?: Result(false, "Zeitüberschreitung bei der Payback-Weiterleitung")
                 watch?.finished(if (r.ok) "✅ ${r.detail}" else "⚠️ ${r.detail}")
@@ -90,7 +92,7 @@ object Payback {
         suspendCancellableCoroutine { cont ->
             val owned = watch == null
             // Umleitungen in die Payback-App (intent://…) fängt WebShops.safeClient ab.
-            val web = watch?.web ?: WebShops.hiddenWebView(ctx)
+            val web = watch?.web ?: WebShops.hiddenWebView(ctx).also { WebShops.setupDesktop(ctx, it, ORIGIN) }
             val handler = Handler(Looper.getMainLooper())
             fun status(s: String) = watch?.setStatus("Payback: $s")
             // 0 = Payback-Seite, 1 = „Jetzt shoppen“ gedrückt, warte auf Shop, 2 = Cookies beim Shop
@@ -131,6 +133,10 @@ object Payback {
                             when {
                                 last == "login" -> {
                                     done(Result(false, "nicht bei Payback angemeldet – einmal „Bei Payback anmelden (App)“", coupons))
+                                    return@evaluateJavascript
+                                }
+                                last == "app" && polls >= 6 -> {
+                                    done(Result(false, "Payback zeigt nur „App herunterladen“ statt „Jetzt shoppen“ (Handy-Ansicht)", coupons))
                                     return@evaluateJavascript
                                 }
                                 last == "shop" && couponRounds < 2 -> {
