@@ -53,10 +53,67 @@ object Checker {
         return blocked
     }
 
+    /**
+     * Prüft ein einzelnes Produkt sofort (z. B. direkt nach dem Hinzufügen).
+     * Gibt null bei Erfolg zurück, sonst eine Fehlermeldung. Blockierend – nur im Hintergrund aufrufen.
+     */
+    suspend fun checkOne(ctx: Context, asin: String): String? = try {
+        val r = Scraper.fetch(Store.domain(ctx), asin)
+        handle(ctx, Store.domain(ctx), Store.dropPercent(ctx), asin, r)
+        null
+    } catch (e: Scraper.BlockedException) {
+        "Von Amazon blockiert (Captcha) – später „Jetzt prüfen“"
+    } catch (e: Exception) {
+        e.message ?: "Fehler"
+    }
+
+    /** Text mit OfferListingId & Co. für Discord (ID in `…`, damit sie sich leicht kopieren lässt). */
+    fun offerInfo(domain: String, p: Product): String {
+        val sb = StringBuilder()
+        sb.append("ASIN: ").append(p.asin)
+        val offer = p.cartOffer
+        sb.append("\nOfferListingId: ").append(if (offer != null) "`$offer`" else "nicht gefunden")
+        if (p.pinnedOffer != null) sb.append(" 📌 festgehalten")
+        if (p.seller.isNotEmpty()) sb.append("\nVerkauf: ").append(p.seller)
+        p.lastPrice?.let { sb.append("\nPreis: ").append(money(it)) }
+        p.target?.let { sb.append("\nZielpreis: ").append(money(it)) }
+        sb.append("\nProdukt: <https://www.$domain/dp/${p.asin}>")
+        sb.append("\nIn den Warenkorb: <").append(cartUrl(domain, p.asin, offer)).append(">")
+        return sb.toString()
+    }
+
+    /** Schickt die OfferListingIds aller Produkte an Discord (in mehreren Nachrichten, max. 2000 Zeichen). */
+    fun sendAllOffers(ctx: Context): Boolean {
+        val hook = Store.webhook(ctx)
+        val domain = Store.domain(ctx)
+        val items = Store.load(ctx)
+        if (hook.isBlank() || items.isEmpty()) return false
+        var ok = true
+        var buf = StringBuilder("🦊 **Mr.Fox Bot – OfferListingIds aller Produkte**\n")
+        for (p in items) {
+            val block = "\n**${p.name}**\n${offerInfo(domain, p)}\n"
+            if (buf.length + block.length > 1900) {
+                ok = sendDiscord(hook, buf.toString()) && ok
+                buf = StringBuilder()
+            }
+            buf.append(block)
+        }
+        if (buf.isNotBlank()) ok = sendDiscord(hook, buf.toString()) && ok
+        return ok
+    }
+
     private suspend fun handle(ctx: Context, domain: String, dropPct: Int, asin: String, r: Scraper.Result) {
         val autoBuyOn = Store.autoBuyEnabled(ctx)
         val cap = Store.autoBuyCap(ctx)
+        var offerEvent: String? = null
         val upd = Store.update(ctx, asin) { p ->
+            val prevOffer = p.offerId
+            offerEvent = when {
+                r.offerId == null -> null
+                prevOffer == null -> "🆕 OfferListingId gefunden"
+                r.offerId != prevOffer -> "🔄 Neues Angebot in der Kaufbox"
+                else -> null
+            }
             val prevPrice = p.lastPrice
             val prevAvail = p.available
             val first = p.lastCheck == 0L
@@ -67,6 +124,8 @@ object Checker {
             // Kaufbox-Angebot merken (nur überschreiben, wenn etwas gefunden wurde).
             r.offerId?.let { p.offerId = it }
             r.seller?.let { p.seller = it }
+            // Ohne eigenen Namen den Produkttitel von Amazon übernehmen.
+            if (p.name == p.asin && r.title != p.asin) p.name = r.title.take(80)
 
             var text: String? = null
             val price = r.price
@@ -109,6 +168,15 @@ object Checker {
             Triple(text, buyNow, offerMismatch)
         } ?: return
         val (alert, buyNow, offerMismatch) = upd
+
+        // OfferListingId bei Discord hinterlegen: wenn sie zum ersten Mal gefunden wird oder sich ändert.
+        // (Bei einem Alarm steht sie ohnehin in der Alarm-Nachricht.)
+        val ev = offerEvent
+        if (ev != null && alert == null) {
+            Store.load(ctx).firstOrNull { it.asin == asin }?.let { p ->
+                sendDiscord(Store.webhook(ctx), "$ev\n**${p.name}**\n${offerInfo(domain, p)}")
+            }
+        }
 
         if (alert != null) {
             val product = Store.load(ctx).firstOrNull { it.asin == asin }
@@ -168,7 +236,9 @@ object Checker {
             notifyUser(ctx, name, message, url, cart, checkout, fullScreen)
             sendDiscord(
                 Store.webhook(ctx),
-                "**$name**\n$message\nProdukt: $url\nIn den Warenkorb: $cart\nZur Kasse: $checkout"
+                "**$name**\n$message\n" +
+                    (product?.let { offerInfo(domain, it) } ?: "Produkt: $url\nIn den Warenkorb: $cart") +
+                    "\nZur Kasse: <$checkout>"
             )
         }
     }

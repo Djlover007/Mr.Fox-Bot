@@ -23,6 +23,11 @@ wieder verfügbar).
 - „In den Warenkorb“ (Button und Benachrichtigung) legt genau dieses Angebot in den Warenkorb.
   Der automatische Warenkorb nutzt dafür den schnellen Weg über den Warenkorb-Link (ohne Produktseite)
   und fällt sonst auf die Produktseite zurück.
+- Beim **Hinzufügen** prüft die App das Produkt sofort und liest die OfferListingId aus (ohne eigenen
+  Namen wird der Amazon-Titel übernommen).
+- **Discord:** Die OfferListingId wird für jedes Produkt gepostet, sobald sie gefunden wird, und erneut,
+  wenn ein anderes Angebot in die Kaufbox kommt. Alarme enthalten sie ebenfalls. Der Knopf
+  „Alle OfferListingIds an Discord senden“ schickt die Liste aller Produkte.
 - **Angebot festhalten:** Button „Aktuelles Angebot festhalten“ beim Produkt, oder beim Hinzufügen eine
   OfferListingId eintragen (auch ein Link mit `OfferListingId.1=…` wird erkannt). Dann kauft Auto-Kauf
   nur, wenn genau dieses Angebot in der Kaufbox liegt (z. B. nur „Verkauf durch Amazon“); sonst wartet

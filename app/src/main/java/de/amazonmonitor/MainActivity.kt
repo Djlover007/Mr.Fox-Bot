@@ -27,6 +27,7 @@ import androidx.work.WorkManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
@@ -108,9 +109,35 @@ class MainActivity : AppCompatActivity() {
                 inName.setText("")
                 inTarget.setText("")
                 inOffer.setText("")
-                if (offer != null) toast("Angebot (OfferListingId) festgehalten.")
                 schedule(Store.interval(this), update = false)
                 refresh()
+                toast("Produkt hinzugefügt – lese OfferListingId …")
+                // Sofort prüfen: liest Preis, Verkäufer und OfferListingId und hinterlegt sie bei Discord.
+                val app = applicationContext
+                CoroutineScope(Dispatchers.IO).launch {
+                    val err = Checker.checkOne(app, asin)
+                    val p = Store.load(app).firstOrNull { it.asin == asin }
+                    // Nur von Hand eingetragene ID (auf der Seite keine gefunden): trotzdem bei Discord hinterlegen.
+                    if (err == null && p != null && p.offerId == null && p.pinnedOffer != null) {
+                        Checker.sendDiscord(
+                            Store.webhook(app),
+                            "🆕 OfferListingId (von Hand)\n**${p.name}**\n${Checker.offerInfo(Store.domain(app), p)}"
+                        )
+                    }
+                    withContext(Dispatchers.Main) {
+                        if (isFinishing || isDestroyed) return@withContext
+                        refresh()
+                        val id = p?.cartOffer
+                        val discord = if (Store.webhook(app).isNotBlank()) " – bei Discord hinterlegt" else ""
+                        toast(
+                            when {
+                                err != null -> "Prüfung fehlgeschlagen: $err"
+                                id != null -> "OfferListingId gefunden$discord:\n$id"
+                                else -> "Keine OfferListingId gefunden (Artikel evtl. nicht verfügbar)."
+                            }
+                        )
+                    }
+                }
             }
         })
 
@@ -213,6 +240,18 @@ class MainActivity : AppCompatActivity() {
                 Thread {
                     val ok = Checker.sendDiscord(hook, "✅ Mr.Fox Bot: Testnachricht")
                     runOnUiThread { toast(if (ok) "Testnachricht gesendet." else "Senden fehlgeschlagen. URL prüfen.") }
+                }.start()
+            }
+        })
+        root.addView(button("Alle OfferListingIds an Discord senden") {
+            if (Store.webhook(this).isBlank()) {
+                toast("Bitte zuerst die Webhook-URL eintragen und speichern.")
+            } else if (Store.load(this).isEmpty()) {
+                toast("Noch keine Produkte.")
+            } else {
+                Thread {
+                    val ok = Checker.sendAllOffers(applicationContext)
+                    runOnUiThread { toast(if (ok) "An Discord gesendet." else "Senden fehlgeschlagen. URL prüfen.") }
                 }.start()
             }
         })
