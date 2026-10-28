@@ -42,6 +42,31 @@ object ShopBuyer {
         "if(security())return 'security';if(document.readyState!=='complete')return 'wait';" +
         "return document.documentElement.innerHTML.indexOf(${JSONObject.quote(article)})>=0?'yes':'no';})()"
 
+    /**
+     * Zusatzangebote ablehnen (Geräteschutz, Garantie, Versicherung): wählt „Ich möchte mein Gerät nicht
+     * schützen“ o. Ä. Es wird nur der Auswahlknopf angeklickt, der zur Ablehn-Option selbst gehört
+     * (kleinster Bereich mit genau einem Auswahlknopf) – nie der eines kostenpflichtigen Angebots.
+     * Ergebnis: 'none' (kein Angebot), 'already' (Ablehnung ist ausgewählt), 'clicked' (Auswahl),
+     * 'btn' („Nein, danke“-Knopf gedrückt).
+     */
+    private val DECLINE_JS = "(function(){" + C + """
+var re=/ich möchte (mein gerät|meine geräte|das gerät|den artikel) nicht (schützen|absichern|versichern)|ohne (geräte)?schutz|keinen? (geräte)?schutz|keine (garantie|versicherung|absicherung|garantieverlängerung)|ohne (garantie|versicherung|absicherung)|nicht absichern|nein,? danke/i;
+function radios(el){return el.querySelectorAll('input[type=radio],[role=radio]');}
+var els=document.querySelectorAll('label,button,[role=radio],[role=button],span,div,p');
+for(var i=0;i<els.length;i++){var e=els[i];if(e.children.length>4)continue;var t=txt(e);
+ if(!t||t.length>90||!re.test(t))continue;
+ // nur das kleinste passende Element (nicht den Bereich, der auch das Bezahl-Angebot enthält)
+ var deeper=false;for(var c=0;c<e.children.length;c++){if(re.test(txt(e.children[c]))){deeper=true;break;}}
+ if(deeper)continue;
+ if(e.tagName==='BUTTON'||e.getAttribute('role')==='button'){if(!vis(e))continue;e.click();return 'btn';}
+ var r=null;var box=e;for(var up=0;up<6&&box;up++){
+  if(box.matches&&box.matches('input[type=radio],[role=radio]')){r=box;break;}
+  var rs=radios(box);if(rs.length===1){r=rs[0];break;}if(rs.length>1)break;box=box.parentElement;}
+ if(r&&(r.checked||r.getAttribute('aria-checked')==='true'))return 'already';
+ if(!vis(e)&&!(r&&vis(r)))continue;
+ (r||e).click();return 'clicked';}
+return 'none';})()"""
+
     private val STEP_JS = "(function(){" + C + AutoBuyer.FIND_TOTAL_JS +
         "if(security())return JSON.stringify({s:'security'});" +
         "var body=(document.body&&document.body.innerText)||'';var h=location.href.toLowerCase();" +
@@ -127,6 +152,8 @@ object ShopBuyer {
         var stepClicks = 0
         val clicks = HashMap<String, Int>()
         var total: Double? = null
+        var declineClicks = 0
+        var declineButtons = 0
 
         fun release() {
             handler.removeCallbacksAndMessages(null)
@@ -185,7 +212,12 @@ object ShopBuyer {
                         again()
                     }
 
-                    1 -> web.evaluateJavascript(ADDED_JS) { raw ->
+                    1 -> {
+                        // Manche Shops fragen direkt nach „In den Warenkorb“ nach Geräteschutz → ablehnen.
+                        web.evaluateJavascript(DECLINE_JS) { d ->
+                            if (d?.contains("clicked") == true) status("Wähle „Gerät nicht schützen“ …")
+                        }
+                        web.evaluateJavascript(ADDED_JS) { raw ->
                         if (!cont.isActive) return@evaluateJavascript
                         val ok = raw?.contains("ok") == true
                         if (ok && mode == Mode.CART) {
@@ -198,6 +230,7 @@ object ShopBuyer {
                             nextStage(2)
                         }
                         again()
+                        }
                     }
 
                     2 -> web.evaluateJavascript(cartHasJs(article)) { raw ->
@@ -221,7 +254,35 @@ object ShopBuyer {
                         again()
                     }
 
-                    3, 4 -> web.evaluateJavascript(STEP_JS) { raw ->
+                    3, 4 -> web.evaluateJavascript(if (stage == 3) DECLINE_JS else "'none'") { d ->
+                        if (!cont.isActive) return@evaluateJavascript
+                        // Erst Zusatzangebote (Geräteschutz) ablehnen und abwarten, bis die Ablehnung
+                        // sicher ausgewählt ist – erst dann wird „Weiter“ gedrückt.
+                        // „Nein, danke“-Knopf: höchstens zweimal drücken, dann normal weiter.
+                        if (d?.contains("btn") == true && declineButtons < 2) {
+                            declineButtons++
+                            status("Lehne Zusatzangebot ab („Nein, danke“) …")
+                            again()
+                            return@evaluateJavascript
+                        }
+                        if (d?.contains("clicked") == true) {
+                            declineClicks++
+                            if (declineClicks > 4) {
+                                done(AutoBuyer.Result(AutoBuyer.Outcome.FAILED, "Geräteschutz-Angebot ließ sich nicht abwählen – aus Sicherheit abgebrochen"))
+                                return@evaluateJavascript
+                            }
+                            status("Wähle „Ich möchte mein Gerät nicht schützen“ …")
+                            again()
+                            return@evaluateJavascript
+                        }
+                        stepPoll()
+                    }
+                }
+            }
+
+            /** Kasse: nächsten Schritt erkennen und ausführen. */
+            fun stepPoll() {
+                web.evaluateJavascript(STEP_JS) { raw ->
                         if (!cont.isActive) return@evaluateJavascript
                         val o = WebShops.parseJs(raw)
                         val s = o.optString("s")
@@ -306,7 +367,6 @@ object ShopBuyer {
                     }
                 }
             }
-        }
 
         status("Lade Produktseite …")
         web.webViewClient = WebShops.safeClient()

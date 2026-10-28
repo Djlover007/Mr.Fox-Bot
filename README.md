@@ -37,6 +37,8 @@ wieder verfügbar).
   gespeicherten **Müller-Zugang** → „Weiter“-Schritte mit den Voreinstellungen deines Kontos →
   „Zahlungspflichtig bestellen“. Achtung: Dabei wird der **ganze Müller-Warenkorb** bestellt.
   Erst den Probelauf testen (am besten mit „sichtbarem Fenster“), er hält vor dem Bestellknopf an.
+- Zusatzangebote wie Geräteschutz/Garantie/Versicherung lehnt der Auto-Kauf immer ab („Ich möchte mein
+  Gerät nicht schützen“, „Nein, danke“); lässt sich die Ablehnung nicht sicher auswählen, bricht er ab.
 - Die Müller-Knöpfe werden über ihre Beschriftung gefunden. Ändert Müller Texte oder Ablauf (oder
   verlangt die Zahlungsart eine Weiterleitung, z. B. PayPal), kann der Auto-Kauf hängen bleiben.
 - Die Liste lässt sich oben nach Sparte filtern: Alle / Amazon / Müller / MediaMarkt.
