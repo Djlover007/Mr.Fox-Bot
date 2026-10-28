@@ -49,7 +49,8 @@ object Checker {
     suspend fun checkAll(ctx: Context, which: (Product) -> Boolean = { true }): Boolean {
         val domain = Store.domain(ctx)
         val dropPct = Store.dropPercent(ctx)
-        val products = Store.load(ctx).filter(which)
+        // Pausierte Produkte und ausgeschaltete Shops überspringen
+        val products = Store.load(ctx).filter { which(it) && Store.isActive(ctx, it) }
         if (products.isEmpty()) return false
         val problems = mutableListOf<String>()
         val blockedShops = mutableSetOf<String>()

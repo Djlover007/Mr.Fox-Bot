@@ -155,9 +155,13 @@ class BotService : Service() {
             val a = Store.lastRun(ctx, Store.RUN_AMAZON)
             val nextA = if (a == 0L) "gleich" else time(a + Store.amazonInterval(ctx) * 60_000L)
             val s = Store.lastRun(ctx, Store.RUN_SHOPS)
-            val n = Store.load(ctx).size
+            val all = Store.load(ctx)
+            val active = all.count { Store.isActive(ctx, it) }
+            val off = (listOf(Product.SHOP_AMAZON to "Amazon") + WebShops.all.map { it.key to it.label })
+                .filter { !Store.shopEnabled(ctx, it.first) }.joinToString { it.second }
             return "Amazon alle ${Store.amazonInterval(ctx)} Min. (zuletzt ${time(a)}, nächste ~$nextA) · " +
-                "Müller/MediaMarkt alle ${Store.interval(ctx).coerceAtLeast(5)} Min. (zuletzt ${time(s)}) · $n Produkte"
+                "Müller/MediaMarkt alle ${Store.interval(ctx).coerceAtLeast(5)} Min. (zuletzt ${time(s)}) · " +
+                "$active von ${all.size} Produkten aktiv" + (if (off.isNotEmpty()) " · AUS: $off" else "")
         }
 
         private fun buildNotification(ctx: Context, text: String): android.app.Notification {

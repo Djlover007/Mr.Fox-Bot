@@ -103,6 +103,24 @@ class MainActivity : AppCompatActivity() {
             handler.postDelayed({ updateBotView() }, 800)
         }
         root.addView(botButton)
+        // Jeden Shop einzeln an/aus
+        root.addView(TextView(this).apply {
+            text = "Überwachung je Shop:"
+            setPadding(0, dp(8), 0, 0)
+        })
+        for ((key, label) in listOf(Product.SHOP_AMAZON to "🟡 Amazon") + WebShops.all.map { it.key to "${it.emoji} ${it.label}" }) {
+            root.addView(androidx.appcompat.widget.SwitchCompat(this).apply {
+                text = label
+                textSize = 16f
+                isChecked = Store.shopEnabled(this@MainActivity, key)
+                setOnCheckedChangeListener { _, on ->
+                    Store.setShopEnabled(this@MainActivity, key, on)
+                    toast("$label: Überwachung ${if (on) "an" else "aus"}")
+                    updateBotView()
+                    refresh()
+                }
+            })
+        }
         root.addView(button("Akku-Optimierung für Mr.Fox Bot ausschalten (empfohlen)") {
             try {
                 startActivity(
@@ -632,10 +650,17 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, dp(12), 0, dp(12))
         }
         val domain = Store.domain(this)
+        val active = Store.isActive(this, p)
         row.addView(TextView(this).apply {
-            text = p.describe()
+            text = p.describe() + if (!p.paused && !active) "\n⏹ Shop ist ausgeschaltet" else ""
             textSize = 15f
+            alpha = if (active) 1f else 0.5f
             setOnClickListener { openWeb(p.pageUrl(domain)) }
+        })
+        // Dieses Produkt einzeln an/aus
+        row.addView(smallButton(if (p.paused) "▶ Überwachung fortsetzen" else "⏸ Überwachung pausieren") {
+            Store.update(this, p.asin) { it.paused = !it.paused }
+            refresh()
         })
         val del = smallButton("Entfernen") {
             Store.remove(this, p.asin)

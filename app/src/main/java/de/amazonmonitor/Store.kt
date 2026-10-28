@@ -45,6 +45,8 @@ class Product(
     val url: String = "",
     /** Kategorie: zuletzt gesehene Produkte als JSON {link: {n: Name, p: Preis, a: verfügbar}}. */
     var catState: String = "{}",
+    /** Überwachung dieses Produkts pausiert (wird nicht geprüft). */
+    var paused: Boolean = false,
 ) {
     /** Web-Shop (Müller, MediaMarkt …) bzw. null für Amazon. */
     val webShop: WebShop? get() = WebShops.byKey(shop)
@@ -62,6 +64,7 @@ class Product(
         .put("kind", kind)
         .put("url", url)
         .put("catState", catState)
+        .put("paused", paused)
         .put("offerId", offerId ?: JSONObject.NULL)
         .put("seller", seller)
         .put("pinnedOffer", pinnedOffer ?: JSONObject.NULL)
@@ -81,6 +84,7 @@ class Product(
 
     fun describe(): String {
         val sb = StringBuilder((webShop?.emoji ?: "🟡") + " ").append(name).append("\n")
+        if (paused) sb.append("⏸ PAUSIERT – wird nicht geprüft\n")
         if (isCategory) {
             if (lastCheck == 0L) return sb.append("Kategorie – noch nicht geprüft").toString()
             val st = try { JSONObject(catState) } catch (e: Exception) { JSONObject() }
@@ -142,6 +146,7 @@ class Product(
             kind = o.optString("kind", KIND_PRODUCT),
             url = o.optString("url", ""),
             catState = o.optString("catState", "{}"),
+            paused = o.optBoolean("paused", false),
         )
 
         const val SHOP_AMAZON = "amazon"
@@ -209,6 +214,16 @@ object Store {
     fun saveAmazonInterval(c: Context, min: Int) {
         prefs(c).edit().putInt("amazon_interval", min.coerceAtLeast(1)).apply()
     }
+
+    /** Überwachung eines ganzen Shops an/aus (Amazon, Müller, MediaMarkt). */
+    fun shopEnabled(c: Context, shopKey: String): Boolean = prefs(c).getBoolean("shop_on_$shopKey", true)
+
+    fun setShopEnabled(c: Context, shopKey: String, on: Boolean) {
+        prefs(c).edit().putBoolean("shop_on_$shopKey", on).apply()
+    }
+
+    /** Wird dieses Produkt gerade überwacht (Shop an und Produkt nicht pausiert)? */
+    fun isActive(c: Context, p: Product): Boolean = !p.paused && shopEnabled(c, p.shop)
 
     /** Dauerbetrieb gewünscht (vom Nutzer gestartet)? */
     fun botWanted(c: Context): Boolean = prefs(c).getBoolean("bot_wanted", false)

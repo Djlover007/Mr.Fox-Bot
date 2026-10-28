@@ -29,6 +29,8 @@ wieder verfügbar).
 - Amazon wird dann im **Amazon-Prüfintervall** geprüft (Standard 2 Min., min. 1), Müller/MediaMarkt im
   eigenen Intervall (min. 5 Min.). Ohne Dauerbetrieb erlaubt Android nur etwa alle 15 Minuten.
 - Nach einem Neustart des Handys startet der Dauerbetrieb von selbst wieder.
+- **Ein/Aus je Shop:** Schalter oben für Amazon, Müller und MediaMarkt.
+- **Ein/Aus je Produkt:** „⏸ Überwachung pausieren“ / „▶ fortsetzen“ beim Produkt bzw. bei der Kategorie.
 - **Akku-Optimierung ausschalten** (Knopf oben), sonst kann Android den Dienst beenden.
 - Hinweis: Der Dauerbetrieb hält das Handy wach und braucht mehr Akku. Sehr kurze Amazon-Intervalle
   mit vielen Produkten können zu Captchas führen – dann das Intervall erhöhen.
