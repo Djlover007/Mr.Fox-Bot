@@ -124,6 +124,51 @@ object WebShops {
         web.settings.userAgentString = chromeLikeUa(ctx)
     }
 
+    /** Desktop-Chrome-Kennung: Seiten wie payback.de leiten dann nicht in ihre Handy-App um. */
+    const val DESKTOP_UA =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+
+    @SuppressLint("SetJavaScriptEnabled")
+    fun setupDesktop(web: WebView) {
+        web.settings.javaScriptEnabled = true
+        web.settings.domStorageEnabled = true
+        web.settings.userAgentString = DESKTOP_UA
+        web.settings.useWideViewPort = true
+        web.settings.loadWithOverviewMode = true
+    }
+
+    /**
+     * App-Links (intent://, market://, payback:// …) kann das App-Fenster nicht öffnen.
+     * Gibt true zurück, wenn [url] abgefangen wurde: mit Web-Ersatzadresse wird diese geladen,
+     * sonst bleibt die Seite einfach stehen (statt „Webseite nicht verfügbar“).
+     */
+    fun handleAppLink(view: WebView, url: String?): Boolean {
+        if (url == null) return false
+        val scheme = url.substringBefore(':').lowercase()
+        if (scheme == "http" || scheme == "https" || scheme == "about" || scheme == "data" || scheme == "blob") return false
+        if (scheme == "intent") {
+            val fallback = try {
+                android.content.Intent.parseUri(url, android.content.Intent.URI_INTENT_SCHEME)
+                    .getStringExtra("browser_fallback_url")
+            } catch (e: Exception) {
+                null
+            }
+            if (fallback != null && fallback.startsWith("http")) view.post { view.loadUrl(fallback) }
+        }
+        return true
+    }
+
+    /** WebViewClient, der App-Links abfängt. */
+    fun safeClient(onFinished: ((WebView, String) -> Unit)? = null) = object : WebViewClient() {
+        override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean =
+            handleAppLink(view, request.url?.toString())
+
+        override fun onPageFinished(view: WebView, url: String) {
+            super.onPageFinished(view, url)
+            onFinished?.invoke(view, url)
+        }
+    }
+
     /** Unsichtbares Browserfenster mit Handy-Bildschirmgröße (sonst hat die Seite keine Fläche). */
     fun hiddenWebView(ctx: Context): WebView = WebView(ctx.applicationContext).apply {
         setup(ctx, this)
@@ -228,7 +273,7 @@ return JSON.stringify({s:'ok',items:out});})()"""
                             }
                         }
                     }
-                    web.webViewClient = object : WebViewClient() {}
+                    web.webViewClient = safeClient()
                     web.loadUrl(url)
                     handler.postDelayed(poll, 2500)
                 }

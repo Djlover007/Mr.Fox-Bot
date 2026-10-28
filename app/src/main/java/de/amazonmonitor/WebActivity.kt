@@ -32,8 +32,17 @@ class WebActivity : AppCompatActivity() {
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
         // Web-Shop-Seiten: Browser-Kennung wie Chrome, sonst hängt die Bot-/Sicherheitsprüfung.
-        intent.getStringExtra("url")?.let { u -> if (u.contains("payback.de") || WebShops.all.any { u.contains(it.base.removePrefix("https://www.")) }) WebShops.setup(this, web) }
+        intent.getStringExtra("url")?.let { u ->
+            when {
+                // Payback als Desktop-Seite, sonst Umleitung in die Payback-App (intent://…)
+                u.contains("payback.de") -> WebShops.setupDesktop(web)
+                WebShops.all.any { u.contains(it.base.removePrefix("https://www.")) } -> WebShops.setup(this, web)
+            }
+        }
         web.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean =
+                WebShops.handleAppLink(view, request.url?.toString())
+
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 if (view != null) {

@@ -313,6 +313,9 @@ function hintOf(d){
         }
 
         web.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean =
+                WebShops.handleAppLink(view, request.url?.toString())
+
             override fun onPageFinished(view: WebView?, url: String?) {
                 if (view == null || url == null || !cont.isActive || stage != 0) return
                 when {

@@ -309,7 +309,7 @@ object ShopBuyer {
         }
 
         status("Lade Produktseite …")
-        web.webViewClient = object : android.webkit.WebViewClient() {}
+        web.webViewClient = WebShops.safeClient()
         web.loadUrl(url)
         handler.postDelayed(tick, 2500)
     }
