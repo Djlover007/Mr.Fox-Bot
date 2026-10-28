@@ -67,24 +67,48 @@ for(var i=0;i<els.length;i++){var e=els[i];if(e.children.length>4)continue;var t
  (r||e).click();return 'clicked';}
 return 'none';})()"""
 
-    private val STEP_JS = "(function(){" + C + AutoBuyer.FIND_TOTAL_JS +
+    /**
+     * Knopfsuche mit Vorrang für offene Fenster (Dialog/Overlay): Liegt z. B. ein Geräteschutz-Fenster über
+     * dem Warenkorb, wird „Weiter“ im Fenster gefunden – nicht „Zur Kasse gehen“ dahinter.
+     * EX = Beschriftungen, die schon mehrfach ohne Wirkung geklickt wurden (werden übersprungen).
+     */
+    private const val PICK_JS = """
+function dlg(){var ds=document.querySelectorAll('[role=dialog],[aria-modal=true],dialog[open],[class*="modal" i],[class*="drawer" i],[class*="sheet" i],[class*="overlay" i],[class*="layer" i]');
+ var best=null;for(var i=0;i<ds.length;i++){var d=ds[i];if(!vis(d))continue;
+  if(d.querySelector('button,a,[role=button],input[type=submit]'))best=d;}return best;}
+function pickIn(root,re,ex){var els=root.querySelectorAll('button,a,input[type=submit],input[type=button],[role=button]');
+ for(var i=0;i<els.length;i++){var e=els[i];var t=txt(e);if(!t||t.length>60||EX.indexOf(t)>=0)continue;
+  if(re.test(t)&&!(ex&&ex.test(t))&&vis(e))return e;}return null;}
+function roots(){var d=dlg();return d?[d,document]:[document];}
+"""
+
+    private val FINAL_RE = "/zahlungspflichtig bestellen|kostenpflichtig bestellen|zahlungspflichtig kaufen|jetzt kaufen|^kaufen${'$'}|kaufen und bezahlen|bestellung absenden|jetzt bestellen/i"
+    private val NEXT_RE = "/^(weiter|weiter zu.*|weiter zur .*|zur zahlung|zur bestellübersicht|zur übersicht|bestellung prüfen|übernehmen|speichern und weiter|auswählen und weiter|bestätigen|fortfahren)${'$'}/i"
+
+    private fun stepJs(exhausted: Collection<String>) = "(function(){" + C + AutoBuyer.FIND_TOTAL_JS + PICK_JS +
+        "var EX=${org.json.JSONArray(exhausted)};" +
         "if(security())return JSON.stringify({s:'security'});" +
         "var body=(document.body&&document.body.innerText)||'';var h=location.href.toLowerCase();" +
         "var pw=document.querySelector('input[type=password]');if(pw&&vis(pw))return JSON.stringify({s:'login'});" +
-        "var f=btn(/zahlungspflichtig bestellen|kostenpflichtig bestellen|zahlungspflichtig kaufen|jetzt kaufen|^kaufen${'$'}|kaufen und bezahlen|bestellung absenden|jetzt bestellen/i,/einkaufen/i);" +
-        "if(f)return JSON.stringify({s:'final',total:findTotal(document)||'',label:txt(f),hint:hintOf(document)});" +
+        "var rs=roots();" +
+        "for(var q=0;q<rs.length;q++){var R=rs[q];" +
+        " var f=pickIn(R,$FINAL_RE,/einkaufen/i);" +
+        " if(f)return JSON.stringify({s:'final',total:findTotal(document)||'',label:txt(f),hint:hintOf(document)});" +
+        " if(q===0&&R!==document){var n0=pickIn(R,$NEXT_RE,/einkaufen|shoppen/i);if(n0)return JSON.stringify({s:'click',label:txt(n0)});}" +
+        "}" +
         "if(/vielen dank für (ihre|deine) bestellung|(ihre|deine) bestellnummer|bestellung ist eingegangen/i.test(body)" +
         "||/success|danke|thank/.test(h))return JSON.stringify({s:'done'});" +
-        "var k=btn(/^zur kasse/i);if(k)return JSON.stringify({s:'click',label:txt(k)});" +
-        "var n=btn(/^(weiter|weiter zu.*|weiter zur .*|zur zahlung|zur bestellübersicht|zur übersicht|bestellung prüfen|übernehmen|speichern und weiter|auswählen und weiter)${'$'}/i,/einkaufen|shoppen/i);" +
-        "if(n)return JSON.stringify({s:'click',label:txt(n)});" +
-        "var a=btn(/^(anmelden|einloggen)${'$'}/i);if(a)return JSON.stringify({s:'needlogin',label:txt(a)});" +
+        "for(var q=0;q<rs.length;q++){var R=rs[q];" +
+        " var k=pickIn(R,/^zur kasse/i);if(k)return JSON.stringify({s:'click',label:txt(k)});" +
+        " var n=pickIn(R,$NEXT_RE,/einkaufen|shoppen/i);if(n)return JSON.stringify({s:'click',label:txt(n)});}" +
+        "var a=pickIn(document,/^(anmelden|einloggen)${'$'}/i);if(a)return JSON.stringify({s:'needlogin',label:txt(a)});" +
         "return JSON.stringify({s:'wait',title:document.title});})()"
 
-    private fun clickTextJs(label: String) = "(function(){" + C +
-        "var t=${JSONObject.quote(label)};" +
-        "var els=document.querySelectorAll('button,a,input[type=submit],input[type=button],[role=button]');" +
-        "for(var i=0;i<els.length;i++){var e=els[i];if(txt(e)===t&&vis(e)){e.click();return 'clicked';}}return 'none';})()"
+    /** Klickt den Knopf mit genau dieser Beschriftung – zuerst in einem offenen Fenster. */
+    private fun clickTextJs(label: String) = "(function(){" + C + PICK_JS + "var EX=[];" +
+        "var t=${JSONObject.quote(label)};var rs=roots();" +
+        "for(var q=0;q<rs.length;q++){var els=rs[q].querySelectorAll('button,a,input[type=submit],input[type=button],[role=button]');" +
+        "for(var i=0;i<els.length;i++){var e=els[i];if(txt(e)===t&&vis(e)){e.click();return 'clicked';}}}return 'none';})()"
 
     private fun loginJs(email: String, pw: String) = "(function(){" + C +
         "function setv(el,v){var d=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');" +
@@ -153,6 +177,7 @@ return 'none';})()"""
         val clicks = HashMap<String, Int>()
         var total: Double? = null
         var declineClicks = 0
+        val exhausted = mutableSetOf<String>()
         var declineButtons = 0
 
         fun release() {
@@ -282,7 +307,7 @@ return 'none';})()"""
 
             /** Kasse: nächsten Schritt erkennen und ausführen. */
             fun stepPoll() {
-                web.evaluateJavascript(STEP_JS) { raw ->
+                web.evaluateJavascript(stepJs(exhausted)) { raw ->
                         if (!cont.isActive) return@evaluateJavascript
                         val o = WebShops.parseJs(raw)
                         val s = o.optString("s")
@@ -349,6 +374,7 @@ return 'none';})()"""
                                 val label = o.optString("label")
                                 val n = clicks[label] ?: 0
                                 val canLogin = Store.hasShopLogin(ctx, shop)
+                                if (n >= 3) exhausted += label // wirkt nicht → künftig überspringen
                                 if (n < 3 && stepClicks < 15 && (s == "click" || canLogin)) {
                                     clicks[label] = n + 1
                                     stepClicks++
