@@ -74,8 +74,10 @@ class PaybackClicker : AccessibilityService() {
             return
         }
 
-        // --- Shop: Cookie-Hinweis nach der Weiterleitung
+        // --- Nach der Weiterleitung: Payback-Hinweis „Ohne Cookies keine °Punkte – Verstanden“ (erscheint oft
+        //     in einem Browserfenster, also nicht in der Payback-App selbst), dann der Cookie-Hinweis des Shops
         if (st == STAGE_REDIRECTED) {
+            find(root, UNDERSTOOD_RE).firstOrNull()?.let { if (act(it)) return }
             find(root, COOKIE_RE).firstOrNull()?.let {
                 if (act(it)) afterCookies()
                 return
@@ -247,7 +249,7 @@ class PaybackClicker : AccessibilityService() {
         private const val STAGE_PLACED = 6
 
         private val COUPON_RE = Regex("(?i)(jetzt )?aktivieren|coupon aktivieren")
-        private val UNDERSTOOD_RE = Regex("(?i)verstanden|ok,? verstanden|alles klar")
+        private val UNDERSTOOD_RE = Regex("(?i)verstanden|ok,? verstanden|alles klar|weiter zum shop")
         private val COOKIE_RE = Regex("(?i)alle akzeptieren|alle cookies akzeptieren|cookies akzeptieren|akzeptieren|alle zulassen|zustimmen|zustimmen und weiter|accept( all)?( cookies)?")
         private val SHOP_RE = Regex("(?i)zur (amazon|mediamarkt|media markt)[- ]app|zum (online[- ])?shop|jetzt shoppen|zu (amazon|mediamarkt)|weiter zu (amazon|mediamarkt)")
         private val SEARCH_RE = Regex("(?i)suche|suchen|suchen auf amazon.*|amazon durchsuchen|search")
