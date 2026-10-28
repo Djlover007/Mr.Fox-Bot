@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
-import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import kotlinx.coroutines.Dispatchers
@@ -113,28 +112,19 @@ object WebShops {
     /** Artikelnummer aus einer Produkt-ID wie „MUE-PPN3115411“ → „3115411“ (für die Warenkorb-Prüfung). */
     fun articleNumber(productId: String): String = Regex("""\d{6,9}""").find(productId)?.value ?: productId
 
-    /** Browser-Kennung ohne „wv“, damit die Seiten uns wie Chrome behandeln. */
-    fun chromeLikeUa(ctx: Context): String =
-        WebSettings.getDefaultUserAgent(ctx).replace("; wv", "").replace(Regex("""Version/\S+ """), "")
-
+    /**
+     * Browser einrichten. Die Browser-Kennung bleibt bewusst die echte des Android-Browsers:
+     * Eine verstellte Kennung (z. B. „Windows-PC“) passt nicht zu den übrigen Angaben des Handys,
+     * und Bot-Prüfungen wie Cloudflare lehnen dann ab („Überprüfung fehlgeschlagen“).
+     */
     @SuppressLint("SetJavaScriptEnabled")
-    fun setup(ctx: Context, web: WebView) {
+    fun setup(@Suppress("UNUSED_PARAMETER") ctx: Context, web: WebView) {
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
-        web.settings.userAgentString = chromeLikeUa(ctx)
-    }
-
-    /** Desktop-Chrome-Kennung: Seiten wie payback.de leiten dann nicht in ihre Handy-App um. */
-    const val DESKTOP_UA =
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
-
-    @SuppressLint("SetJavaScriptEnabled")
-    fun setupDesktop(web: WebView) {
-        web.settings.javaScriptEnabled = true
-        web.settings.domStorageEnabled = true
-        web.settings.userAgentString = DESKTOP_UA
-        web.settings.useWideViewPort = true
-        web.settings.loadWithOverviewMode = true
+        web.settings.userAgentString = null // = Standard-Kennung des Android-Browsers
+        // Bot-Prüfungen (Cloudflare Turnstile) laufen in einem eingebetteten Fenster und brauchen Cookies.
+        android.webkit.CookieManager.getInstance().setAcceptCookie(true)
+        android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(web, true)
     }
 
     /**

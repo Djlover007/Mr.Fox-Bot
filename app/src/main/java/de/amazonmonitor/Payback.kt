@@ -77,7 +77,7 @@ object Payback {
         return mutex.withLock {
             withContext(Dispatchers.Main) {
                 val watch = if (visible) WatchActivity.open(ctx) else null
-                watch?.let { WebShops.setupDesktop(it.web) }
+                watch?.let { WebShops.setup(ctx, it.web) }
                 val r = withTimeoutOrNull(60_000L) { execute(ctx, watch, page, domain) }
                     ?: Result(false, "Zeitüberschreitung bei der Payback-Weiterleitung")
                 watch?.finished(if (r.ok) "✅ ${r.detail}" else "⚠️ ${r.detail}")
@@ -89,8 +89,8 @@ object Payback {
     private suspend fun execute(ctx: Context, watch: WatchActivity?, page: String, domain: String): Result =
         suspendCancellableCoroutine { cont ->
             val owned = watch == null
-            // Desktop-Modus, sonst leitet payback.de in die Payback-App um (intent://…).
-            val web = watch?.web ?: WebShops.hiddenWebView(ctx).also { WebShops.setupDesktop(it) }
+            // Umleitungen in die Payback-App (intent://…) fängt WebShops.safeClient ab.
+            val web = watch?.web ?: WebShops.hiddenWebView(ctx)
             val handler = Handler(Looper.getMainLooper())
             fun status(s: String) = watch?.setStatus("Payback: $s")
             // 0 = Payback-Seite, 1 = „Jetzt shoppen“ gedrückt, warte auf Shop, 2 = Cookies beim Shop
