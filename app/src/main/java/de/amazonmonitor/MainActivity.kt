@@ -649,6 +649,10 @@ class MainActivity : AppCompatActivity() {
 
         // Sparten-Auswahl
         val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val barScroll = android.widget.HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(bar)
+        }
         fun tab(label: String, f: String?) = Button(this).apply {
             text = (if (listFilter == f) "● " else "") + label
             setOnClickListener { listFilter = f; refresh() }
@@ -656,7 +660,7 @@ class MainActivity : AppCompatActivity() {
         bar.addView(tab("Alle (${all.size})", null))
         bar.addView(tab("Amazon (${all.count { !it.isWebShop }})", Product.SHOP_AMAZON))
         for (ws in WebShops.all) bar.addView(tab("${ws.label} (${all.count { it.shop == ws.key }})", ws.key))
-        listBox.addView(bar)
+        listBox.addView(barScroll)
 
         val items = all.filter { listFilter == null || it.shop == listFilter }
         if (items.isEmpty()) {

@@ -47,6 +47,27 @@ class PaybackClicker : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val pkg = event?.packageName?.toString() ?: return
+        process(pkg)
+    }
+
+    /**
+     * Regelmäßig selbst nachsehen, solange ein Vorgang läuft – ruhige Seiten lösen sonst keine
+     * Ereignisse aus und die Automatik würde warten.
+     */
+    private val tick = object : Runnable {
+        override fun run() {
+            if (!isArmed(this@PaybackClicker)) return
+            rootInActiveWindow?.packageName?.toString()?.let { process(it) }
+            handler.postDelayed(this, 1_500)
+        }
+    }
+
+    fun startTicking() {
+        handler.removeCallbacks(tick)
+        handler.postDelayed(tick, 1_500)
+    }
+
+    private fun process(pkg: String) {
         if (pkg == packageName) return // nie in Mr.Fox Bot selbst
         if (!isArmed(this)) {
             couponClicks = 0
@@ -56,6 +77,8 @@ class PaybackClicker : AccessibilityService() {
         val now = System.currentTimeMillis()
         if (now - lastAction < 700) return
         val root = rootInActiveWindow ?: return
+        if (root.packageName?.toString() != pkg) return
+        prefs(this).edit().putString(LAST_PKG, pkg).apply()
         val st = stage(this)
         val buy = mode(this) == MODE_BUY
 
@@ -82,8 +105,8 @@ class PaybackClicker : AccessibilityService() {
                 if (act(it)) afterCookies()
                 return
             }
-            // Kein Cookie-Hinweis in der Amazon-App? Nach 6 Sek. einfach weiter.
-            if (buy && pkg == AMAZON_PACKAGE && now - stageTime(this) > 6_000) setStage(this, STAGE_SEARCH)
+            // Kein Cookie-Hinweis in der Amazon-App? Nach 5 Sek. einfach weiter.
+            if (buy && pkg == AMAZON_PACKAGE && now - stageTime(this) > 5_000) setStage(this, STAGE_SEARCH)
             return
         }
         if (!buy || pkg != AMAZON_PACKAGE) return
@@ -267,6 +290,7 @@ class PaybackClicker : AccessibilityService() {
         private const val ASIN = "pb_asin"
         private const val NAME = "pb_name"
         private const val DRY = "pb_dry"
+        private const val LAST_PKG = "pb_last_pkg"
 
         @Volatile
         private var instance: PaybackClicker? = null
@@ -279,7 +303,8 @@ class PaybackClicker : AccessibilityService() {
             prefs(ctx).edit()
                 .putLong(KEY, System.currentTimeMillis() + 90_000L)
                 .putInt(STAGE, STAGE_START).putLong(STAGE_AT, System.currentTimeMillis())
-                .putString(MODE, MODE_OPEN).apply()
+                .putString(MODE, MODE_OPEN).putString(LAST_PKG, "").apply()
+            instance?.startTicking()
         }
 
         fun setStage(ctx: Context, s: Int) {
@@ -345,8 +370,12 @@ class PaybackClicker : AccessibilityService() {
                 .putInt(STAGE, STAGE_START).putLong(STAGE_AT, System.currentTimeMillis())
                 .putString(MODE, MODE_BUY).putString(ASIN, asin).putString(NAME, name).putBoolean(DRY, dryRun)
                 .apply()
+            prefs(ctx).edit().putString(LAST_PKG, "").apply()
             val app = ctx.applicationContext
-            watchdog.post { Payback.openForBuy(app, Product.SHOP_AMAZON) }
+            watchdog.post {
+                Payback.openForBuy(app, Product.SHOP_AMAZON)
+                instance?.startTicking()
+            }
             scheduleWatchdog(app, asin)
         }
 
@@ -366,11 +395,20 @@ class PaybackClicker : AccessibilityService() {
                     disarm(ctx)
                     when {
                         st == STAGE_PLACED -> report(ctx, asin, AutoBuyer.Result(AutoBuyer.Outcome.UNCLEAR, "Payback-Weg: Bestellung abgeschickt, aber keine Bestätigung erkannt"))
-                        dry -> report(ctx, asin, AutoBuyer.Result(AutoBuyer.Outcome.FAILED, "Payback-Probelauf hängt bei Schritt ${stepName(st)}"))
-                        else -> fallback(ctx, asin, "Payback-Weg hängt bei Schritt ${stepName(st)}")
+                        dry -> report(ctx, asin, AutoBuyer.Result(AutoBuyer.Outcome.FAILED, "Payback-Probelauf hängt bei Schritt ${stepName(st)}${appName(ctx)}"))
+                        else -> fallback(ctx, asin, "Payback-Weg hängt bei Schritt ${stepName(st)}${appName(ctx)}")
                     }
                 }
             }, 5_000)
+        }
+
+        /** In welcher App der Vorgang zuletzt war (für die Fehlermeldung). */
+        private fun appName(ctx: Context): String = when (val p = prefs(ctx).getString(LAST_PKG, "") ?: "") {
+            "" -> ""
+            PAYBACK_PACKAGE -> " (in der Payback-App)"
+            AMAZON_PACKAGE -> " (in der Amazon-App)"
+            "com.android.chrome" -> " (in Chrome – Amazon wurde im Browser statt in der Amazon-App geöffnet)"
+            else -> " (in App: $p)"
         }
 
         private fun stepName(st: Int) = when (st) {
@@ -398,7 +436,10 @@ class PaybackClicker : AccessibilityService() {
         private fun report(ctx: Context, asin: String, res: AutoBuyer.Result) {
             val line = "💳 " + AutoBuyer.describe(res)
             CoroutineScope(Dispatchers.IO).launch {
-                Store.update(ctx, asin) { it.lastBuyResult = line }
+                Store.update(ctx, asin) {
+                    it.lastBuyResult = line
+                    it.lastBuyAttempt = System.currentTimeMillis()
+                }
                 val p = Store.load(ctx).firstOrNull { it.asin == asin }
                 val title = p?.name ?: asin
                 val url = p?.pageUrl(Store.domain(ctx)) ?: "https://www.${Store.domain(ctx)}/dp/$asin"

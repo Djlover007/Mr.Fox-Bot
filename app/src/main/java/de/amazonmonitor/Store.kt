@@ -117,9 +117,11 @@ class Product(
         }
         if (autoBuy) sb.append("\n🛒 Auto-Kauf scharf")
         if (lastBuyResult.isNotEmpty()) {
-            sb.append("\nLetzter Auto-Kauf (")
-                .append(SimpleDateFormat("dd.MM. HH:mm", Locale.GERMANY).format(Date(lastBuyAttempt)))
-                .append("): ").append(lastBuyResult)
+            sb.append("\nLetzter Auto-Kauf")
+            if (lastBuyAttempt > 0L) {
+                sb.append(" (").append(SimpleDateFormat("dd.MM. HH:mm", Locale.GERMANY).format(Date(lastBuyAttempt))).append(")")
+            }
+            sb.append(": ").append(lastBuyResult)
         }
         return sb.toString()
     }
