@@ -14,10 +14,11 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
-    <!-- Prüfen, ob Chrome installiert ist -->
+    <!-- Prüfen, ob Chrome, Payback- und Amazon-App installiert sind -->
     <queries>
         <package android:name="com.android.chrome" />
         <package android:name="de.payback.client.android" />
+        <package android:name="com.amazon.mShop.android.shopping" />
     </queries>
 
     <application
