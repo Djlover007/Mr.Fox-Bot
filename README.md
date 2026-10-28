@@ -1,5 +1,7 @@
 # Mr.Fox Bot (Android)
 
+Überwacht **Amazon** und **Müller** (mueller.de).
+
 Android-App, die Preis und Verfügbarkeit von Amazon-Produkten im Hintergrund überwacht und dich
 per Benachrichtigung und optional per Discord informiert (Zielpreis erreicht, Preis um X % gefallen,
 wieder verfügbar).
@@ -19,6 +21,25 @@ wieder verfügbar).
 - „Zur Kasse“ öffnet nur den Bezahlvorgang, das endgültige „Jetzt kaufen“ tippst du selbst
 - Optional: **Auto-Kauf** – bestellt ein Produkt selbstständig, sobald der Zielpreis erreicht ist
   (mit Probelauf und nur einem Versuch, siehe unten)
+
+## Müller (mueller.de)
+- Beim Hinzufügen oben **Amazon** oder **Müller** wählen (ein eingefügter mueller.de-Link stellt automatisch um).
+- **Müller-Produkt** (Link `mueller.de/p/…`): Preis und Verfügbarkeit („In den Warenkorb“ vorhanden =
+  verfügbar), Zielpreis-, Preisfall- und Wieder-verfügbar-Alarme, automatischer Warenkorb, Auto-Kauf
+  und Probelauf – wie bei Amazon.
+- **Müller-Kategorie** (Link `mueller.de/c/…`, z. B. Spielekonsolen): meldet neue Produkte, Produkte die
+  wieder online verfügbar sind, und – mit Zielpreis – verfügbare Produkte unter diesem Preis. Die erste
+  Prüfung merkt sich nur den Stand. „Produkte der Kategorie anzeigen“ listet alles; Antippen übernimmt
+  ein Produkt als einzelnes Müller-Produkt (z. B. für Auto-Kauf).
+- Müller prüft Besucher mit einer „Sicherheitsprüfung“. Deshalb lädt die App Müller-Seiten in einem
+  unsichtbaren Browserfenster (dauert etwas länger als Amazon).
+- **Auto-Kauf bei Müller:** Produkt in den Warenkorb → Warenkorb → „Zur Kasse“ → Anmeldung mit dem
+  gespeicherten **Müller-Zugang** → „Weiter“-Schritte mit den Voreinstellungen deines Kontos →
+  „Zahlungspflichtig bestellen“. Achtung: Dabei wird der **ganze Müller-Warenkorb** bestellt.
+  Erst den Probelauf testen (am besten mit „sichtbarem Fenster“), er hält vor dem Bestellknopf an.
+- Die Müller-Knöpfe werden über ihre Beschriftung gefunden. Ändert Müller Texte oder Ablauf (oder
+  verlangt die Zahlungsart eine Weiterleitung, z. B. PayPal), kann der Auto-Kauf hängen bleiben.
+- Die Liste lässt sich oben nach Sparte filtern: Alle / Amazon / Müller.
 
 ## OfferListingId (Angebot / Verkäufer)
 - Bei jeder Prüfung liest die App die **OfferListingId** und den Verkäufer des Angebots in der Kaufbox aus.
@@ -98,6 +119,8 @@ app/src/main/java/de/amazonmonitor/
     WebActivity.kt    Amazon-Fenster, Anmeldung, Zur-Kasse-Klick
     WatchActivity.kt  sichtbares Fenster für Probelauf/Auto-Kauf
     Links.kt          Links im App-Fenster oder in Chrome öffnen
+    Mueller.kt        Müller: Links erkennen, Produkt- und Kategorieseiten auslesen
+    MuellerBuyer.kt   Müller: Warenkorb und Auto-Kauf
 ```
 
 ## APK bauen und installieren

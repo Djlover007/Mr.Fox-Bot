@@ -27,30 +27,42 @@ class CheckWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx,
 object Checker {
     private const val CHANNEL = "price_alerts"
 
-    /** Prüft alle Produkte nacheinander. Gibt true zurück, wenn Amazon blockiert hat. */
+    /**
+     * Prüft alle Produkte nacheinander (Amazon und Müller). Blockiert ein Shop (Captcha bzw.
+     * Sicherheitsprüfung), werden nur dessen restliche Produkte für diese Runde übersprungen.
+     * Gibt true zurück, wenn ein Shop blockiert hat.
+     */
     suspend fun checkAll(ctx: Context): Boolean {
         val domain = Store.domain(ctx)
         val dropPct = Store.dropPercent(ctx)
         val products = Store.load(ctx)
-        var status = "OK"
-        var blocked = false
+        val problems = mutableListOf<String>()
+        val blockedShops = mutableSetOf<String>()
 
         for ((i, p) in products.withIndex()) {
+            if (p.shop in blockedShops) continue
             try {
-                val r = Scraper.fetch(domain, p.asin)
-                handle(ctx, domain, dropPct, p.asin, r)
+                checkProduct(ctx, domain, dropPct, p)
             } catch (e: Scraper.BlockedException) {
-                status = "Von Amazon blockiert (Captcha) – später erneut"
-                blocked = true
-                break
+                blockedShops += p.shop
+                problems += if (p.isMueller) "Müller: Sicherheitsprüfung nicht bestanden" else "Amazon: blockiert (Captcha)"
             } catch (e: Exception) {
-                status = "Fehler bei ${p.name}: ${e.message}"
+                problems += "Fehler bei ${p.name}: ${e.message}"
             }
             if (i < products.lastIndex) delay((3000L..8000L).random())
         }
 
-        Store.setStatus(ctx, status)
-        return blocked
+        Store.setStatus(ctx, if (problems.isEmpty()) "OK" else problems.joinToString(" · "))
+        return blockedShops.isNotEmpty()
+    }
+
+    /** Ein Produkt bzw. eine Kategorie je nach Shop abrufen und auswerten. */
+    private suspend fun checkProduct(ctx: Context, domain: String, dropPct: Int, p: Product) {
+        when {
+            p.isCategory -> handleCategory(ctx, p, Mueller.fetchCategory(ctx, p.url))
+            p.isMueller -> handle(ctx, domain, dropPct, p.asin, Mueller.fetchProduct(ctx, p.url))
+            else -> handle(ctx, domain, dropPct, p.asin, Scraper.fetch(domain, p.asin))
+        }
     }
 
     /**
@@ -58,17 +70,26 @@ object Checker {
      * Gibt null bei Erfolg zurück, sonst eine Fehlermeldung. Blockierend – nur im Hintergrund aufrufen.
      */
     suspend fun checkOne(ctx: Context, asin: String): String? = try {
-        val r = Scraper.fetch(Store.domain(ctx), asin)
-        handle(ctx, Store.domain(ctx), Store.dropPercent(ctx), asin, r)
+        val p = Store.load(ctx).firstOrNull { it.asin == asin } ?: throw IllegalStateException("Produkt fehlt")
+        checkProduct(ctx, Store.domain(ctx), Store.dropPercent(ctx), p)
         null
     } catch (e: Scraper.BlockedException) {
-        "Von Amazon blockiert (Captcha) – später „Jetzt prüfen“"
+        "Blockiert (${e.message}) – später „Jetzt prüfen“"
     } catch (e: Exception) {
         e.message ?: "Fehler"
     }
 
     /** Text mit OfferListingId & Co. für Discord (ID in `…`, damit sie sich leicht kopieren lässt). */
     fun offerInfo(domain: String, p: Product): String {
+        if (p.isMueller) {
+            val sb = StringBuilder("Shop: Müller")
+            p.lastPrice?.let { sb.append("\nPreis: ").append(money(it)) }
+            p.target?.let { sb.append("\nZielpreis: ").append(money(it)) }
+            sb.append("\nVerfügbar: ").append(if (p.available) "ja" else "nein")
+            sb.append("\nProdukt: <").append(p.url).append(">")
+            sb.append("\nWarenkorb: <").append(Mueller.CART_URL).append(">")
+            return sb.toString()
+        }
         val sb = StringBuilder()
         sb.append("ASIN: ").append(p.asin)
         val offer = p.cartOffer
@@ -181,8 +202,10 @@ object Checker {
             val product = Store.load(ctx).firstOrNull { it.asin == asin }
             val name = product?.name ?: r.title
             val offer = product?.cartOffer
-            val url = "https://www.$domain/dp/$asin"
-            val cart = cartUrl(domain, asin, offer)
+            val mueller = product?.isMueller == true
+            val url = product?.pageUrl(domain) ?: "https://www.$domain/dp/$asin"
+            // Müller hat keinen Direkt-Link „in den Warenkorb“ – dort öffnet der Knopf die Produktseite.
+            val cart = if (mueller) url else cartUrl(domain, asin, offer)
             var message: String = alert
             if (offerMismatch) {
                 message += "\n⏸ Auto-Kauf wartet: in der Kaufbox liegt nicht das festgehaltene Angebot" +
@@ -194,7 +217,8 @@ object Checker {
             if (buyNow) {
                 val visible = Store.watchBuy(ctx) && Links.canOpenFromBackground(ctx)
                 val res = try {
-                    AutoBuyer.buy(ctx, domain, asin, dryRun = false, visible = visible)
+                    if (mueller) MuellerBuyer.buy(ctx, url, asin, dryRun = false, visible = visible)
+                    else AutoBuyer.buy(ctx, domain, asin, dryRun = false, visible = visible)
                 } catch (e: Exception) {
                     AutoBuyer.Result(AutoBuyer.Outcome.FAILED, e.message ?: "Fehler")
                 }
@@ -205,13 +229,14 @@ object Checker {
                     openUrl = when {
                         visible -> null // Das Auto-Kauf-Fenster ist schon offen.
                         res.outcome == AutoBuyer.Outcome.ORDERED || res.outcome == AutoBuyer.Outcome.UNCLEAR ->
-                            ordersUrl(domain)
+                            if (mueller) Mueller.ACCOUNT_URL else ordersUrl(domain)
                         else -> url
                     }
                 }
             } else if (Store.autoCart(ctx)) {
                 val res = try {
-                    CartAdder.add(ctx, domain, asin, offer)
+                    if (mueller) MuellerBuyer.addToCart(ctx, url, asin)
+                    else CartAdder.add(ctx, domain, asin, offer)
                 } catch (e: Exception) {
                     CartAdder.Result.FAILED
                 }
@@ -220,13 +245,13 @@ object Checker {
                 }
                 message += when (res) {
                     CartAdder.Result.OK -> "\n✅ Automatisch in den Warenkorb gelegt"
-                    CartAdder.Result.NOT_LOGGED_IN -> "\n⚠️ Nicht bei Amazon angemeldet: ${CartAdder.lastDetail}"
+                    CartAdder.Result.NOT_LOGGED_IN -> "\n⚠️ Nicht angemeldet: ${CartAdder.lastDetail}"
                     CartAdder.Result.FAILED ->
                         "\n⚠️ Automatisch in den Warenkorb legen hat nicht geklappt (${CartAdder.lastDetail}) – nutze den Link"
                 }
             }
 
-            val checkout = checkoutUrl(domain)
+            val checkout = if (mueller) Mueller.CART_URL else checkoutUrl(domain)
             // Mit Erlaubnis „Über anderen Apps einblenden“ direkt öffnen, sonst als Vollbild-Benachrichtigung
             // (öffnet sich bei gesperrtem/ausgeschaltetem Bildschirm, sonst erscheint sie oben).
             val fullScreen = openUrl?.let { u ->
@@ -240,6 +265,60 @@ object Checker {
                     "\nZur Kasse: <$checkout>"
             )
         }
+    }
+
+    /**
+     * Kategorie (Müller): meldet neue Produkte, Produkte die wieder online verfügbar sind,
+     * und – falls ein Zielpreis gesetzt ist – verfügbare Produkte unter diesem Preis.
+     * Die erste Prüfung merkt sich nur den Stand (keine Alarmflut).
+     */
+    private fun handleCategory(ctx: Context, cat: Product, items: List<Mueller.CatItem>) {
+        if (items.isEmpty()) throw IllegalStateException("Keine Produkte in der Kategorie gefunden")
+        val lines = mutableListOf<String>()
+        Store.update(ctx, cat.asin) { p ->
+            val first = p.lastCheck == 0L
+            val old = try { JSONObject(p.catState) } catch (e: Exception) { JSONObject() }
+            val now = JSONObject()
+            val target = p.target
+            for (it in items) {
+                val prev = old.optJSONObject(it.url)
+                val prevAvail = prev?.optBoolean("a") ?: false
+                val prevPrice = prev?.let { o -> if (o.isNull("p")) null else o.optDouble("p") }
+                val priceTxt = it.price?.let { pr -> money(pr) } ?: "Preis ?"
+                if (!first) {
+                    when {
+                        prev == null && it.available -> lines += "🆕 Neu & online verfügbar: ${it.name} – $priceTxt\n<${it.url}>"
+                        prev == null -> lines += "🆕 Neu (noch ausverkauft): ${it.name} – $priceTxt"
+                        !prevAvail && it.available -> lines += "✅ Wieder online verfügbar: ${it.name} – $priceTxt\n<${it.url}>"
+                        target != null && it.available && it.price != null && it.price <= target &&
+                            (prevPrice == null || prevPrice > target) ->
+                            lines += "💶 Unter ${money(target)}: ${it.name} – $priceTxt\n<${it.url}>"
+                    }
+                }
+                now.put(it.url, JSONObject().put("n", it.name).put("p", it.price ?: JSONObject.NULL).put("a", it.available))
+            }
+            p.catState = now.toString()
+            p.lastCheck = System.currentTimeMillis()
+            p.available = items.any { it.available }
+        }
+        if (lines.isEmpty()) return
+
+        val text = lines.joinToString("\n")
+        val fullScreen = if (Store.openOnAlert(ctx)) {
+            if (Links.openFromBackground(ctx, cat.url)) null else cat.url
+        } else null
+        notifyUser(ctx, cat.name, text, cat.url, cat.url, Mueller.CART_URL, fullScreen)
+        // Discord: max. 2000 Zeichen pro Nachricht
+        val hook = Store.webhook(ctx)
+        var buf = StringBuilder("🟠 **${cat.name}** (Müller-Kategorie)\n")
+        for (l in lines) {
+            if (buf.length + l.length > 1900) {
+                sendDiscord(hook, buf.toString())
+                buf = StringBuilder()
+            }
+            buf.append(l).append('\n')
+        }
+        sendDiscord(hook, buf.toString())
     }
 
     /**

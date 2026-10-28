@@ -37,11 +37,29 @@ class Product(
     var pinnedOffer: String? = null,
     /** Verkäufer des festgehaltenen Angebots (nur zur Anzeige). */
     var pinnedSeller: String = "",
+    /** Shop: [SHOP_AMAZON] oder [SHOP_MUELLER]. */
+    val shop: String = SHOP_AMAZON,
+    /** [KIND_PRODUCT] oder [KIND_CATEGORY] (Kategorie-Überwachung, nur Müller). */
+    val kind: String = KIND_PRODUCT,
+    /** Seiten-Link (bei Müller nötig; bei Amazon leer, dort wird er aus Domain + ASIN gebaut). */
+    val url: String = "",
+    /** Kategorie: zuletzt gesehene Produkte als JSON {link: {n: Name, p: Preis, a: verfügbar}}. */
+    var catState: String = "{}",
 ) {
-    /** Angebot für den Warenkorb: festgehaltenes, sonst das zuletzt gesehene. */
-    val cartOffer: String? get() = pinnedOffer ?: offerId
+    val isMueller: Boolean get() = shop == SHOP_MUELLER
+    val isCategory: Boolean get() = kind == KIND_CATEGORY
+
+    /** Angebot für den Warenkorb: festgehaltenes, sonst das zuletzt gesehene (nur Amazon). */
+    val cartOffer: String? get() = if (isMueller) null else pinnedOffer ?: offerId
+
+    /** Produkt- bzw. Kategorieseite. */
+    fun pageUrl(amazonDomain: String): String = if (isMueller) url else "https://www.$amazonDomain/dp/$asin"
 
     fun toJson(): JSONObject = JSONObject()
+        .put("shop", shop)
+        .put("kind", kind)
+        .put("url", url)
+        .put("catState", catState)
         .put("offerId", offerId ?: JSONObject.NULL)
         .put("seller", seller)
         .put("pinnedOffer", pinnedOffer ?: JSONObject.NULL)
@@ -60,7 +78,17 @@ class Product(
         .put("lastCartAdd", lastCartAdd)
 
     fun describe(): String {
-        val sb = StringBuilder(name).append("\n")
+        val sb = StringBuilder(if (isMueller) "🟠 " else "🟡 ").append(name).append("\n")
+        if (isCategory) {
+            if (lastCheck == 0L) return sb.append("Kategorie – noch nicht geprüft").toString()
+            val st = try { JSONObject(catState) } catch (e: Exception) { JSONObject() }
+            var avail = 0
+            for (k in st.keys()) if (st.getJSONObject(k).optBoolean("a")) avail++
+            sb.append("Kategorie: ${st.length()} Produkte, davon $avail online verfügbar")
+            target?.let { sb.append("\nAlarm unter: ${money(it)}") }
+            sb.append("\nGeprüft: ${SimpleDateFormat("dd.MM. HH:mm", Locale.GERMANY).format(Date(lastCheck))}")
+            return sb.toString()
+        }
         val lp = lastPrice
         if (lastCheck == 0L) {
             sb.append("Noch nicht geprüft")
@@ -108,7 +136,16 @@ class Product(
             seller = o.optString("seller", ""),
             pinnedOffer = o.optS("pinnedOffer"),
             pinnedSeller = o.optString("pinnedSeller", ""),
+            shop = o.optString("shop", SHOP_AMAZON),
+            kind = o.optString("kind", KIND_PRODUCT),
+            url = o.optString("url", ""),
+            catState = o.optString("catState", "{}"),
         )
+
+        const val SHOP_AMAZON = "amazon"
+        const val SHOP_MUELLER = "mueller"
+        const val KIND_PRODUCT = "product"
+        const val KIND_CATEGORY = "category"
 
         private fun JSONObject.optS(k: String): String? =
             if (!has(k) || isNull(k)) null else getString(k).takeIf { it.isNotEmpty() }
@@ -219,6 +256,23 @@ object Store {
 
     fun clearLogin(c: Context) {
         prefs(c).edit().remove("amz_mail").remove("amz_pw").apply()
+    }
+
+    // --- Müller-Zugang (Passwort ebenfalls verschlüsselt im Android-Tresor)
+    fun muellerEmail(c: Context): String = prefs(c).getString("mue_mail", "") ?: ""
+
+    fun hasMuellerLogin(c: Context): Boolean = prefs(c).getString("mue_pw", null) != null
+
+    fun muellerPassword(c: Context): String? = prefs(c).getString("mue_pw", null)?.let { Vault.decrypt(it) }
+
+    fun saveMuellerLogin(c: Context, email: String, password: String?) {
+        val e = prefs(c).edit().putString("mue_mail", email)
+        if (password != null) e.putString("mue_pw", Vault.encrypt(password))
+        e.apply()
+    }
+
+    fun clearMuellerLogin(c: Context) {
+        prefs(c).edit().remove("mue_mail").remove("mue_pw").apply()
     }
 
     fun status(c: Context): String = prefs(c).getString("status", "–") ?: "–"

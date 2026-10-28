@@ -81,7 +81,7 @@ object AutoBuyer {
      * Sucht den Gesamtbetrag über die Beschriftung („Gesamtsumme“, „Gesamtbetrag“ …) und nimmt den
      * letzten €-Betrag in derselben Zeile. hintOf() sammelt €-Beträge der Seite für die Fehlersuche.
      */
-    private const val FIND_TOTAL_JS = """
+    const val FIND_TOTAL_JS = """
 function findTotal(d){
  var labels=[/^(gesamtsumme|gesamtbetrag|bestellsumme|zu zahlender betrag|order total)/i,/^(gesamt|summe|total)\b/i];
  var pr=/(\d{1,3}(?:[.\s]\d{3})*,\d{2}\s*€|€\s*\d{1,3}(?:[.,\s]\d{3})*[.,]\d{2}|\d+[.,]\d{2}\s*€)/g;
