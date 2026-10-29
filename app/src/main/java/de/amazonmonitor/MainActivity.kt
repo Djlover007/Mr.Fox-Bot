@@ -137,7 +137,7 @@ class MainActivity : AppCompatActivity() {
         val shopGroup = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL }
         val rbAmazon = RadioButton(this).apply { id = View.generateViewId(); text = "Amazon" }
         shopGroup.addView(rbAmazon)
-        // Ein Knopf pro Web-Shop (Müller, MediaMarkt …)
+        // Ein Knopf pro Web-Shop (Müller, MediaMarkt, BAUR …)
         val shopButtons = WebShops.all.associateWith { ws ->
             RadioButton(this).apply { id = View.generateViewId(); text = ws.label }.also { shopGroup.addView(it) }
         }
@@ -246,7 +246,7 @@ class MainActivity : AppCompatActivity() {
             Store.amazonInterval(this).toString()
         )
         val inInterval = edit(
-            "Müller/MediaMarkt-Prüfintervall in Minuten (min. 5; ohne Dauerbetrieb min. 15)",
+            "Müller/MediaMarkt/BAUR-Prüfintervall in Minuten (min. 5; ohne Dauerbetrieb min. 15)",
             InputType.TYPE_CLASS_NUMBER,
             Store.interval(this).toString()
         )
@@ -316,7 +316,7 @@ class MainActivity : AppCompatActivity() {
             Store.saveSettings(this, domain, interval, drop, inWebhook.text.toString().trim(), cbCart.isChecked)
             Store.saveAutoBuy(this, cbBuy.isChecked)
             toast(
-                "Gespeichert. Amazon alle ${Store.amazonInterval(this)} Min., Müller/MediaMarkt alle $interval Min." +
+                "Gespeichert. Amazon alle ${Store.amazonInterval(this)} Min., Müller/MediaMarkt/BAUR alle $interval Min." +
                     (if (cbBuy.isChecked) " Auto-Kauf erlaubt." else "") +
                     (if (!BotService.alive) " Für Prüfungen unter 15 Min. oben den Dauerbetrieb starten." else "")
             )
@@ -391,11 +391,11 @@ class MainActivity : AppCompatActivity() {
             startActivity(Links.inApp(this, "https://www.${Store.domain(this)}/gp/sign-in.html"))
         }.apply { textSize = 12f })
 
-        // --- Zugang je Web-Shop (Müller, MediaMarkt …), verschlüsselt gespeichert
+        // --- Zugang je Web-Shop (Müller, MediaMarkt, BAUR …), verschlüsselt gespeichert
         for (ws in WebShops.all) addShopLoginSection(root, ws)
 
         // --- PAYBACK
-        root.addView(label("💳 PAYBACK (°Punkte bei Amazon und MediaMarkt)"))
+        root.addView(label("💳 PAYBACK (°Punkte bei Amazon, MediaMarkt und BAUR)"))
         root.addView(TextView(this).apply {
             text = "Payback erlaubt Online-Shopping auf dem Handy nur in der Payback-App. Mit Haken bekommen " +
                 "Alarme und Produkte einen Knopf „💳 Über Payback kaufen“: Er öffnet die Payback-App beim Shop und " +
@@ -413,7 +413,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         root.addView(paybackAutoBtn)
-        for (key in listOf(Product.SHOP_AMAZON, Product.SHOP_MEDIAMARKT)) {
+        for (key in Payback.partners) {
             root.addView(CheckBox(this).apply {
                 text = "${Payback.label(key)}: Payback-Knopf anzeigen"
                 isChecked = Store.payback(this@MainActivity, key)

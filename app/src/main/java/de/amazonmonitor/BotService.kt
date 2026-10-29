@@ -28,7 +28,7 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Dauerbetrieb: prüft Amazon in kurzem Abstand (Standard alle 2 Min.) und Müller/MediaMarkt im
+ * Dauerbetrieb: prüft Amazon in kurzem Abstand (Standard alle 2 Min.) und Müller/MediaMarkt/BAUR im
  * eigenen Intervall. Läuft als Vordergrund-Dienst mit fester Benachrichtigung – daran siehst du,
  * dass der Bot läuft. Android erlaubt kürzere Abstände als 15 Min. nur auf diese Weise.
  *
@@ -88,7 +88,7 @@ class BotService : Service() {
                 }
                 if (now - Store.lastRun(ctx, Store.RUN_SHOPS) >= shopsMs) {
                     Store.setLastRun(ctx, Store.RUN_SHOPS, System.currentTimeMillis())
-                    update("Prüfe Müller/MediaMarkt …")
+                    update("Prüfe Müller/MediaMarkt/BAUR …")
                     Checker.checkAll(ctx) { it.isWebShop }
                 }
             } catch (e: Exception) {
@@ -160,7 +160,7 @@ class BotService : Service() {
             val off = (listOf(Product.SHOP_AMAZON to "Amazon") + WebShops.all.map { it.key to it.label })
                 .filter { !Store.shopEnabled(ctx, it.first) }.joinToString { it.second }
             return "Amazon alle ${Store.amazonInterval(ctx)} Min. (zuletzt ${time(a)}, nächste ~$nextA) · " +
-                "Müller/MediaMarkt alle ${Store.interval(ctx).coerceAtLeast(5)} Min. (zuletzt ${time(s)}) · " +
+                "Müller/MediaMarkt/BAUR alle ${Store.interval(ctx).coerceAtLeast(5)} Min. (zuletzt ${time(s)}) · " +
                 "$active von ${all.size} Produkten aktiv" + (if (off.isNotEmpty()) " · AUS: $off" else "")
         }
 

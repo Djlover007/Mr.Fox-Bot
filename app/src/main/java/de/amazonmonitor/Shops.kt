@@ -17,7 +17,7 @@ import kotlin.coroutines.resume
 
 /**
  * Ein Web-Shop, der im (unsichtbaren) Browserfenster der App gelesen und bedient wird
- * (Müller, MediaMarkt …). Amazon läuft separat (Scraper/AutoBuyer).
+ * (Müller, MediaMarkt, BAUR …). Amazon läuft separat (Scraper/AutoBuyer).
  *
  * Neue Shops lassen sich hier mit einer weiteren Konfiguration ergänzen.
  */
@@ -98,7 +98,25 @@ object WebShops {
         availWords = listOf("lieferung", "lieferbar", "online verfügbar", "versand", "abholung"),
     )
 
-    val all = listOf(MUELLER, MEDIAMARKT)
+    val BAUR = WebShop(
+        key = Product.SHOP_BAUR, label = "BAUR", emoji = "🟢",
+        base = "https://www.baur.de",
+        cartUrl = "https://www.baur.de/warenkorb",
+        accountUrl = "https://www.baur.de/mein-konto/uebersicht",
+        credPrefix = "baur", idPrefix = "BAUR",
+        // /p/<name>-<Artikelnummer>/ (ggf. mit #item… oder ?…)
+        productRe = Regex("""baur\.de/p/([^\s?#]*?-(\d{6,12}))/?"""),
+        productUrl = { "https://www.baur.de/p/$it/" },
+        // Kategorien: /bereich/unterbereich/ (alles außer Produkt-, Konto- und Warenkorbseiten)
+        categoryRe = Regex("""baur\.de/((?!p/|warenkorb|mein-konto|merkzettel|service-hilfe)[a-z0-9-]+(?:/[a-z0-9-]+)*)/?(?:[?#\s]|$)"""),
+        categoryUrl = { "https://www.baur.de/$it/" },
+        tileLinkSelector = "a[href*=\"/p/\"]",
+        addButtonRe = "^(in den warenkorb|in den warenkorb legen)$",
+        soldWords = listOf("ausverkauft", "nicht lieferbar", "nicht verfügbar", "derzeit nicht", "bald wieder"),
+        availWords = listOf("lieferbar", "sofort", "werktag", "auf lager", "verfügbar"),
+    )
+
+    val all = listOf(MUELLER, MEDIAMARKT, BAUR)
 
     fun byKey(key: String): WebShop? = all.firstOrNull { it.key == key }
 

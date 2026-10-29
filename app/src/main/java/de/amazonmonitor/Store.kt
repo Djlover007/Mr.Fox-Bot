@@ -48,7 +48,7 @@ class Product(
     /** Überwachung dieses Produkts pausiert (wird nicht geprüft). */
     var paused: Boolean = false,
 ) {
-    /** Web-Shop (Müller, MediaMarkt …) bzw. null für Amazon. */
+    /** Web-Shop (Müller, MediaMarkt, BAUR …) bzw. null für Amazon. */
     val webShop: WebShop? get() = WebShops.byKey(shop)
     val isWebShop: Boolean get() = shop != SHOP_AMAZON
     val isCategory: Boolean get() = kind == KIND_CATEGORY
@@ -154,6 +154,7 @@ class Product(
         const val SHOP_AMAZON = "amazon"
         const val SHOP_MUELLER = "mueller"
         const val SHOP_MEDIAMARKT = "mediamarkt"
+        const val SHOP_BAUR = "baur"
         const val KIND_PRODUCT = "product"
         const val KIND_CATEGORY = "category"
 
@@ -316,7 +317,7 @@ object Store {
         prefs(c).edit().remove("amz_mail").remove("amz_pw").apply()
     }
 
-    // --- Zugang für Web-Shops (Müller, MediaMarkt …); Passwort verschlüsselt im Android-Tresor
+    // --- Zugang für Web-Shops (Müller, MediaMarkt, BAUR …); Passwort verschlüsselt im Android-Tresor
     fun shopEmail(c: Context, shop: WebShop): String = prefs(c).getString("${shop.credPrefix}_mail", "") ?: ""
 
     fun hasShopLogin(c: Context, shop: WebShop): Boolean = prefs(c).getString("${shop.credPrefix}_pw", null) != null

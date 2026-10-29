@@ -1,6 +1,6 @@
 # Mr.Fox Bot (Android)
 
-Überwacht **Amazon**, **Müller** (mueller.de) und **MediaMarkt** (mediamarkt.de).
+Überwacht **Amazon**, **Müller** (mueller.de), **MediaMarkt** (mediamarkt.de) und **BAUR** (baur.de).
 
 Android-App, die Preis und Verfügbarkeit von Amazon-Produkten im Hintergrund überwacht und dich
 per Benachrichtigung und optional per Discord informiert (Zielpreis erreicht, Preis um X % gefallen,
@@ -54,7 +54,7 @@ wieder verfügbar).
   Gerät nicht schützen“, „Nein, danke“); lässt sich die Ablehnung nicht sicher auswählen, bricht er ab.
 - Die Müller-Knöpfe werden über ihre Beschriftung gefunden. Ändert Müller Texte oder Ablauf (oder
   verlangt die Zahlungsart eine Weiterleitung, z. B. PayPal), kann der Auto-Kauf hängen bleiben.
-- Die Liste lässt sich oben nach Sparte filtern: Alle / Amazon / Müller / MediaMarkt.
+- Die Liste lässt sich oben nach Sparte filtern: Alle / Amazon / Müller / MediaMarkt / BAUR.
 
 ## MediaMarkt (mediamarkt.de)
 Funktioniert wie Müller (gleicher Mechanismus, siehe oben):
@@ -65,6 +65,13 @@ Funktioniert wie Müller (gleicher Mechanismus, siehe oben):
   „MediaMarkt: Bot-/Sicherheitsprüfung nicht bestanden“ – dann einmal über „Bei MediaMarkt in der
   App anmelden“ die Seite öffnen und ggf. die Prüfung bestätigen.
 - Auch hier wird beim Auto-Kauf der **ganze MediaMarkt-Warenkorb** bestellt.
+
+## BAUR (baur.de)
+Funktioniert wie Müller/MediaMarkt:
+- **Produkt:** Link `baur.de/p/…-1234567890/`
+- **Kategorie:** z. B. `baur.de/multimedia/spielkonsolen/` (neu / wieder lieferbar / unter Zielpreis)
+- Eigener **BAUR-Zugang** für Auto-Kauf; Warenkorb `/warenkorb`. Auch hier bestellt der Auto-Kauf den
+  ganzen BAUR-Warenkorb. BAUR ist Payback-Partner („💳 Über Payback kaufen“).
 
 ## PAYBACK (°Punkte bei Amazon und MediaMarkt)
 Payback lässt Online-Shopping auf dem Handy nur über die **Payback-App** zu (eine Weiterleitung im

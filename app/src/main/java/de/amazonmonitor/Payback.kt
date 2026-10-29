@@ -26,9 +26,13 @@ object Payback {
     private val PARTNERS = mapOf(
         Product.SHOP_AMAZON to "https://www.payback.de/shop/amazon",
         Product.SHOP_MEDIAMARKT to "https://www.payback.de/shop/mediamarkt",
+        Product.SHOP_BAUR to "https://www.payback.de/shop/baur",
     )
 
     fun supports(shopKey: String): Boolean = shopKey in PARTNERS
+
+    /** Alle Shops mit Payback (für die Einstellungen). */
+    val partners: List<String> get() = PARTNERS.keys.toList()
 
     fun shopPage(shopKey: String): String? = PARTNERS[shopKey]
 

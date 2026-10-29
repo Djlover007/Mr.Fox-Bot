@@ -274,7 +274,7 @@ class PaybackClicker : AccessibilityService() {
         private val COUPON_RE = Regex("(?i)(jetzt )?aktivieren|coupon aktivieren")
         private val UNDERSTOOD_RE = Regex("(?i)verstanden|ok,? verstanden|alles klar|weiter zum shop")
         private val COOKIE_RE = Regex("(?i)alle akzeptieren|alle cookies akzeptieren|cookies akzeptieren|akzeptieren|alle zulassen|zustimmen|zustimmen und weiter|accept( all)?( cookies)?")
-        private val SHOP_RE = Regex("(?i)zur (amazon|mediamarkt|media markt)[- ]app|zum (online[- ])?shop|jetzt shoppen|zu (amazon|mediamarkt)|weiter zu (amazon|mediamarkt)")
+        private val SHOP_RE = Regex("(?i)zur (amazon|mediamarkt|media markt|baur)[- ]app|zum (online[- ])?shop|jetzt shoppen|zu (amazon|mediamarkt|baur)|weiter zu (amazon|mediamarkt|baur)")
         private val SEARCH_RE = Regex("(?i)suche|suchen|suchen auf amazon.*|amazon durchsuchen|search")
         private val BUY_NOW_RE = Regex("(?i)jetzt kaufen|sofort kaufen")
         private val FINAL_RE = Regex("(?i)bestellung aufgeben|jetzt kaufen|kaufen|zahlungspflichtig bestellen|jetzt bestellen|bestellen")

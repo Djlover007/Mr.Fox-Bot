@@ -13,7 +13,7 @@ import org.json.JSONObject
 import kotlin.coroutines.resume
 
 /**
- * Web-Shops (Müller, MediaMarkt …): in den Warenkorb legen und automatisch bestellen.
+ * Web-Shops (Müller, MediaMarkt, BAUR …): in den Warenkorb legen und automatisch bestellen.
  *
  * Ablauf: Produktseite → „In den Warenkorb“ → Warenkorb → „Zur Kasse“ → ggf. Anmeldung mit dem
  * gespeicherten Zugang des Shops → „Weiter“-Schritte mit den voreingestellten Angaben →
