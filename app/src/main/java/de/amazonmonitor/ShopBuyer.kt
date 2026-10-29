@@ -65,10 +65,33 @@ for(var i=0;i<els.length;i++){var e=els[i];if(e.children&&e.children.length>4)co
  var r=null;var box=e;for(var up=0;up<6&&box;up++){
   if(box.matches&&box.matches('input[type=radio],[role=radio]')){r=box;break;}
   var rs=radios(box);if(rs.length===1){r=rs[0];break;}if(rs.length>1)break;box=box.parentElement;}
+ if(!r){r=e.closest('[aria-checked],[aria-selected],[aria-pressed]');
+  if(r&&r.querySelectorAll('[aria-checked],[aria-selected],[aria-pressed]').length>1)r=null;}
  if(!r)continue;
- if(r.checked||r.getAttribute('aria-checked')==='true')return 'already';
+ if(r.checked||r.getAttribute('aria-checked')==='true'||r.getAttribute('aria-selected')==='true'||r.getAttribute('aria-pressed')==='true')return 'already';
  if(!vis(e)&&!vis(r))continue;
  r.click();return 'clicked';}
+return 'none';})()"""
+
+    /**
+     * Übersichtsseite mit hinterlegter Zahlungsart („Zahlungsart: Rechnung [Ändern]“): ist es nicht PayPal,
+     * im Zahlungs-Abschnitt auf „Ändern“ tippen, damit die Auswahl erscheint.
+     * Ergebnis: 'paypal' (ist schon PayPal), 'clicked', 'none:<Text des Abschnitts>' oder 'none'.
+     */
+    private val PAYMENT_CHANGE_JS = "(function(){" + C + """
+var head=/^(zahlungsart|zahlungsmethode|bezahlart|bezahlmethode|zahlung|zahlungsweise|deine zahlungsart|ihre zahlungsart)\s*:?$/i;
+var chg=/^(ändern|bearbeiten|auswählen|zahlungsart ändern|zahlungsart auswählen|andere zahlungsart( wählen)?)$/i;
+var els=document.querySelectorAll('h1,h2,h3,h4,h5,legend,dt,span,div,p,strong,b,label');
+for(var i=0;i<els.length;i++){var e=els[i];var t=txt(e);if(!t||t.length>30||!head.test(t))continue;
+ var box=e.parentElement;
+ for(var up=0;up<6&&box;up++){var bt=(box.innerText||'').replace(/\s+/g,' ');
+  if(bt.length>600)break;
+  if(/paypal/i.test(bt)&&!/paypal (express|checkout)/i.test(bt))return 'paypal';
+  var bs=box.querySelectorAll('button,a,[role=button]');
+  for(var j=0;j<bs.length;j++){if(chg.test(txt(bs[j]))&&vis(bs[j])){bs[j].click();return 'clicked';}}
+  box=box.parentElement;}
+ var pt=(e.parentElement&&e.parentElement.parentElement&&e.parentElement.parentElement.innerText||'').replace(/\s+/g,' ').trim().slice(0,80);
+ return 'none:'+pt;}
 return 'none';})()"""
 
     /** Auf der PayPal-Seite: Anmeldung nötig? Sonst „Jetzt zahlen“ / „Zustimmen und weiter“ drücken. */
@@ -114,7 +137,7 @@ function roots(){var d=dlg();return d?[d,document]:[document];}
 """
 
     private val FINAL_RE = "/zahlungspflichtig bestellen|kostenpflichtig bestellen|zahlungspflichtig kaufen|jetzt kaufen|^kaufen${'$'}|kaufen und bezahlen|bestellung absenden|jetzt bestellen/i"
-    private val NEXT_RE = "/^(weiter|weiter zu.*|weiter zur .*|zur zahlung|zur bestellübersicht|zur übersicht|bestellung prüfen|übernehmen|speichern und weiter|auswählen und weiter|bestätigen|fortfahren)${'$'}/i"
+    private val NEXT_RE = "/^(weiter|weiter zu.*|weiter zur .*|zur zahlung|zur bestellübersicht|zur übersicht|bestellung prüfen|übernehmen|speichern und weiter|auswählen und weiter|bestätigen|fortfahren|speichern|auswahl speichern|zahlungsart übernehmen|zahlungsart speichern)${'$'}/i"
 
     private fun stepJs(exhausted: Collection<String>) = "(function(){" + C + AutoBuyer.FIND_TOTAL_JS + PICK_JS +
         "var EX=${org.json.JSONArray(exhausted)};" +
@@ -213,6 +236,8 @@ function roots(){var d=dlg();return d?[d,document]:[document];}
         var paypalClicks = 0
         var paypalState = "" // "", "gewählt", "nicht angeboten"
         var paypalPays = 0
+        var paymentChanges = 0
+        var paymentInfo = ""
 
         fun release() {
             handler.removeCallbacksAndMessages(null)
@@ -344,10 +369,30 @@ function roots(){var d=dlg();return d?[d,document]:[document];}
                                         status("Wähle Zahlungsart PayPal …")
                                         again()
                                     }
-                                    else -> {
-                                        if (pp?.contains("already") == true) paypalState = "gewählt"
+                                    pp?.contains("already") == true -> {
+                                        paypalState = "gewählt"
                                         stepPoll()
                                     }
+                                    paymentChanges < 2 -> web.evaluateJavascript(PAYMENT_CHANGE_JS) { pc ->
+                                        if (!cont.isActive) return@evaluateJavascript
+                                        val v = pc?.trim('"') ?: ""
+                                        when {
+                                            v == "paypal" -> {
+                                                paypalState = "gewählt"
+                                                stepPoll()
+                                            }
+                                            v == "clicked" -> {
+                                                paymentChanges++
+                                                status("Zahlungsart ändern → PayPal …")
+                                                again()
+                                            }
+                                            else -> {
+                                                if (v.startsWith("none:")) paymentInfo = v.removePrefix("none:")
+                                                stepPoll()
+                                            }
+                                        }
+                                    }
+                                    else -> stepPoll()
                                 }
                             }
                             return@evaluateJavascript
@@ -413,7 +458,8 @@ function roots(){var d=dlg();return d?[d,document]:[document];}
                                     val pay = when {
                                         !Store.preferPaypal(ctx) -> ""
                                         paypalState == "gewählt" || paypalClicks > 0 -> ", Zahlung: PayPal ✅"
-                                        else -> ", Zahlung: PayPal nicht angeboten (Standard-Zahlungsart)"
+                                        else -> ", Zahlung: PayPal NICHT gewählt" +
+                                            (if (paymentInfo.isNotEmpty()) " (Zahlungs-Abschnitt: „$paymentInfo“)" else " (keine PayPal-Auswahl gefunden)")
                                     }
                                     done(AutoBuyer.Result(AutoBuyer.Outcome.DRY_RUN_OK, "Bestellknopf „$label“ gefunden, $info$pay – Probelauf, nichts bestellt", t))
                                     return@evaluateJavascript
