@@ -105,15 +105,19 @@ function mm(u) {
 }
 
 /** Telegram-Webansicht (t.me/s/…) und Deal-Weiterleitungen. */
+const tgPosts2 = [{ id: 500, html: 'Start<br>1€<br><a href="https://s.pirat.deals/aaa">x</a>' }];
 const tgPosts = [{ id: 100, html: 'Alter Deal<br>9,99€<br><a href="https://s.pirat.deals/aaa">s.pirat.deals/aaa</a>' }];
 function telegram(u) {
-  if (u.pathname !== '/s/MockDeals') return page('Telegram', 'Gruppe ohne Vorschau');
-  const msgs = tgPosts.map((p) => `<div class="tgme_widget_message_wrap"><div class="tgme_widget_message" data-post="MockDeals/${p.id}">
+  if (u.pathname !== '/s/MockDeals' && u.pathname !== '/s/MockDeals2') return page('Telegram', 'Gruppe ohne Vorschau');
+  const list = u.pathname === '/s/MockDeals2' ? tgPosts2 : tgPosts;
+  const name = u.pathname.slice(3);
+  const msgs = list.map((p) => `<div class="tgme_widget_message_wrap"><div class="tgme_widget_message" data-post="${name}/${p.id}">
     <div class="tgme_widget_message_text">${p.html}<br><br><a href="https://piratedeals.de/">piratedeals.de</a> | <a href="https://t.me/addlist/x">Ordner</a></div>
     <time datetime="2026-10-29T17:00:00+00:00"></time></div></div>`).join('');
   return page('MockDeals – Telegram', `<div class="tgme_channel_info">Mock Deals</div>${msgs}`);
 }
 function pirat(u) {
+  if (u.pathname === '/bbb2') return { redirect: 'https://www.mock-amazon.test/dp/B000TEST03?tag=other-21' };
   if (u.pathname === '/bbb') return { redirect: 'https://www.mock-amazon.test/dp/B000TEST03?tag=pirate-21' };
   if (u.pathname === '/js') return page('Weiterleitung', "<script>setTimeout(function(){location.href='https://www.mock-amazon.test/dp/B000TEST02?tag=x'},300)</script>Weiterleitung …");
   return page('Deal', 'Kein Shop');
@@ -226,6 +230,15 @@ async function run() {
     check('Telegram: Weiterleitung (302) aufgelöst + auf Liste', p3 && p3.name === 'Mr.Fox Konsole Pro' && p3.target === 1199, JSON.stringify(p3));
     check('Telegram: JS-Weiterleitung aufgelöst + auf Liste', p2 && p2.target === 49.99, JSON.stringify(p2));
     check('Telegram: Alarm erzeugt', Store.alerts().some((a) => /📣 Telegram @MockDeals/.test(a.text) && /FOX10/.test(a.text)), (Store.alerts()[0] || {}).text);
+    // gleicher Deal in einem zweiten Kanal (weitergeleitet) → kein zweiter Alarm
+    Store.setSettings({ tgChannels: 'MockDeals, MockDeals2' });
+    await Telegram.poll((d) => Checker.telegramDeal(d));
+    const before = Store.alerts().length;
+    tgPosts2.push({ id: 501, html: '🔥 Mr.Fox Konsole Pro<br>💰 1.199,00€<br><a href="https://s.pirat.deals/bbb">s.pirat.deals/bbb</a>' });
+    tgPosts2.push({ id: 502, html: 'Konsole Max<br>59,99€<br><a href="https://s.pirat.deals/bbb2">s.pirat.deals/bbb2</a>' });
+    tr = await Telegram.poll((d) => Checker.telegramDeal(d));
+    check('Telegram: zweiter Kanal, doppelter Deal nur einmal', tr.found === 0 && Store.alerts().length === before, JSON.stringify(tr) + ' Alarme ' + before + '→' + Store.alerts().length);
+    Store.setSettings({ tgChannels: 'MockDeals' });
     const tt = await Telegram.test(5);
     check('Telegram: Test-Ansicht', tt.length === 5 && tt.filter((x) => x.ok).length === 2, tt.map((x) => x.id + ':' + x.ok + ':' + x.why).join(', '));
     const tbad = await Telegram.fetchChannel('PirateDealsChat').then(() => 'kein Fehler', (e) => e.message);

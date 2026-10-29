@@ -241,7 +241,45 @@ object Store {
 
     // --- Telegram-Deals
     fun tgEnabled(c: Context): Boolean = prefs(c).getBoolean("tg_enabled", false)
-    fun tgChannels(c: Context): String = prefs(c).getString("tg_channels", "PirateDeals") ?: "PirateDeals"
+    fun tgChannels(c: Context): String {
+        val p = prefs(c)
+        // einmalig: PirateDealsAngebote zum alten Standard-Kanal dazunehmen
+        if (!p.getBoolean("tg_mig1", false)) {
+            val e = p.edit().putBoolean("tg_mig1", true)
+            if (p.getString("tg_channels", "PirateDeals")?.trim().equals("PirateDeals", ignoreCase = true)) {
+                e.putString("tg_channels", "PirateDeals, PirateDealsAngebote")
+            }
+            e.apply()
+            return p.getString("tg_channels", null)?.takeIf { !it.equals("PirateDeals", true) } ?: "PirateDeals, PirateDealsAngebote"
+        }
+        return p.getString("tg_channels", "PirateDeals, PirateDealsAngebote") ?: "PirateDeals, PirateDealsAngebote"
+    }
+
+    /** Zuletzt gemeldete Telegram-Deals (Link bzw. Produkt) – 24 Stunden lang nicht doppelt melden. */
+    @Synchronized
+    fun tgSeen(c: Context, key: String): Boolean {
+        val arr = try { JSONArray(prefs(c).getString("tg_seen", "[]")) } catch (e: Exception) { JSONArray() }
+        val now = System.currentTimeMillis()
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            if (o.optString("k") == key && now - o.optLong("t") < 24 * 3600_000L) return true
+        }
+        return false
+    }
+
+    @Synchronized
+    fun tgRemember(c: Context, key: String) {
+        val arr = try { JSONArray(prefs(c).getString("tg_seen", "[]")) } catch (e: Exception) { JSONArray() }
+        val now = System.currentTimeMillis()
+        val out = JSONArray()
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            if (now - o.optLong("t") < 24 * 3600_000L) out.put(o)
+        }
+        out.put(JSONObject().put("k", key).put("t", now))
+        while (out.length() > 400) out.remove(0)
+        prefs(c).edit().putString("tg_seen", out.toString()).apply()
+    }
     fun tgKeywords(c: Context): String = prefs(c).getString("tg_keywords", "") ?: ""
     fun tgExclude(c: Context): String = prefs(c).getString("tg_exclude", "") ?: ""
     fun tgMaxPrice(c: Context): Double? = prefs(c).getString("tg_max", "")?.replace(',', '.')?.toDoubleOrNull()

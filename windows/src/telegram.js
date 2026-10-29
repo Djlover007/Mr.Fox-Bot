@@ -128,6 +128,18 @@ async function resolve(url, depth = 0) {
   }
 }
 
+/** Zuletzt gemeldete Deals (Link bzw. Produkt) – 24 Stunden lang nicht doppelt melden. */
+function seenList() {
+  const now = Date.now();
+  return (Store.setting('tgSeen') || []).filter((x) => x && now - x.t < 24 * 3600 * 1000);
+}
+function seen(key) { return seenList().some((x) => x.k === key); }
+function remember(key) {
+  const l = seenList();
+  l.push({ k: key, t: Date.now() });
+  Store.setSettings({ tgSeen: l.slice(-400) });
+}
+
 function cfg() {
   const s = Store.settings();
   return { keywords: s.tgKeywords || '', exclude: s.tgExclude || '', maxPrice: s.tgMaxPrice == null || s.tgMaxPrice === '' ? null : Number(s.tgMaxPrice), action: s.tgAction || 'alert' };
@@ -153,10 +165,17 @@ async function poll(onDeal) {
       for (const p of fresh) {
         const mm = matches(p, c);
         if (!mm.ok) continue;
-        found++;
         const link = dealLink(p);
+        // Derselbe Deal in mehreren Kanälen (z. B. weitergeleitet): nur einmal melden
+        if (seen('l:' + link)) continue;
         const resolved = await resolve(link);
-        await onDeal({ channel: ch, post: p, title: title(p.text), price: dealPrice(p.text), link, resolved, target: target(resolved), action: c.action });
+        const tg = target(resolved);
+        const tkey = tg ? 't:' + (tg.asin || tg.id) : null;
+        if (tkey && seen(tkey)) { remember('l:' + link); continue; }
+        remember('l:' + link);
+        if (tkey) remember(tkey);
+        found++;
+        await onDeal({ channel: ch, post: p, title: title(p.text), price: dealPrice(p.text), link, resolved, target: tg, action: c.action });
       }
     } catch (e) {
       errors.push(e.message);

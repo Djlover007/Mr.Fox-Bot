@@ -33,7 +33,7 @@ const DEFAULTS = {
   lastRun_shops: 0,
   // Telegram-Deals
   tgEnabled: false,
-  tgChannels: 'PirateDeals',
+  tgChannels: 'PirateDeals, PirateDealsAngebote',
   tgKeywords: '',
   tgExclude: '',
   tgMaxPrice: null,
@@ -58,6 +58,11 @@ function load() {
   data.settings = Object.assign({}, DEFAULTS, data.settings || {});
   data.secrets = data.secrets || {};
   data.alerts = Array.isArray(data.alerts) ? data.alerts : [];
+  // einmalig: PirateDealsAngebote zum alten Standard-Kanal dazunehmen
+  if (!data.settings.tgMig1) {
+    if (String(data.settings.tgChannels).trim().toLowerCase() === 'piratedeals') data.settings.tgChannels = 'PirateDeals, PirateDealsAngebote';
+    data.settings.tgMig1 = true;
+  }
   return data;
 }
 

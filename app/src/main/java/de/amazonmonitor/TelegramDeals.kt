@@ -207,9 +207,17 @@ object TelegramDeals {
                 Store.setTgLast(ctx, ch, maxOf(last, maxId))
                 for (p in fresh) {
                     if (!matches(ctx, p).first) continue
-                    found++
                     val link = dealLink(p) ?: continue
+                    // Derselbe Deal in mehreren Kanälen (z. B. weitergeleitet): nur einmal melden
+                    if (Store.tgSeen(ctx, "l:$link")) continue
                     val resolved = resolve(ctx, link)
+                    val tkey = target(resolved)?.let { "t:${it.id}" }
+                    Store.tgRemember(ctx, "l:$link")
+                    if (tkey != null) {
+                        if (Store.tgSeen(ctx, tkey)) continue
+                        Store.tgRemember(ctx, tkey)
+                    }
+                    found++
                     handleDeal(ctx, ch, p, link, resolved)
                 }
             } catch (e: Exception) {
