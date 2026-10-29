@@ -54,24 +54,26 @@ object ShopBuyer {
      * „PayPal-Express“-Knopf. Ergebnis: 'none' (kein PayPal), 'already' (ist gewählt), 'clicked'.
      */
     private val PAYPAL_SELECT_JS = "(function(){" + C + """
-var re=/paypal/i;
 function lab(e){return e.tagName==='IMG'?(e.alt||''):txt(e);}
-function radios(el){return el.querySelectorAll('input[type=radio],[role=radio]');}
-var els=document.querySelectorAll('label,[role=radio],span,div,p,strong,img[alt]');
-for(var i=0;i<els.length;i++){var e=els[i];if(e.children&&e.children.length>4)continue;var t=lab(e);
- if(!t||t.length>40||!re.test(t))continue;
- var deeper=false;if(e.children){for(var c=0;c<e.children.length;c++){if(re.test(lab(e.children[c]))){deeper=true;break;}}}
- if(deeper)continue;
- var r=null;var box=e;for(var up=0;up<6&&box;up++){
-  if(box.matches&&box.matches('input[type=radio],[role=radio]')){r=box;break;}
-  var rs=radios(box);if(rs.length===1){r=rs[0];break;}if(rs.length>1)break;box=box.parentElement;}
- if(!r){r=e.closest('[aria-checked],[aria-selected],[aria-pressed]');
-  if(r&&r.querySelectorAll('[aria-checked],[aria-selected],[aria-pressed]').length>1)r=null;}
- if(!r)continue;
- if(r.checked||r.getAttribute('aria-checked')==='true'||r.getAttribute('aria-selected')==='true'||r.getAttribute('aria-pressed')==='true')return 'already';
- if(!vis(e)&&!vis(r))continue;
- r.click();return 'clicked';}
-return 'none';})()"""
+function radioText(r){var t='';if(r.id){var l=document.querySelector('label[for="'+r.id+'"]');if(l)t=txt(l)+' '+(l.querySelector('img[alt]')?l.querySelector('img[alt]').alt:'');}
+ var L=r.closest('label');if(L)t+=' '+txt(L)+' '+(L.querySelector('img[alt]')?L.querySelector('img[alt]').alt:'');
+ if(!t.trim()){var b=r.parentElement;for(var up=0;up<4&&b;up++){if(b.querySelectorAll('input[type=radio],[role=radio]').length===1){t=(b.innerText||'')+' '+[].map.call(b.querySelectorAll('img[alt]'),function(i){return i.alt;}).join(' ');}b=b.parentElement;}}
+ if(r.getAttribute('aria-label'))t+=' '+r.getAttribute('aria-label');
+ if(r.getAttribute('value'))t+=' '+r.getAttribute('value');
+ return t.replace(/\s+/g,' ').trim();}
+function on(r){return r.checked||r.getAttribute('aria-checked')==='true'||r.getAttribute('aria-selected')==='true';}
+var rs=document.querySelectorAll('input[type=radio],[role=radio]');
+var pp=null,list=[];
+for(var i=0;i<rs.length;i++){var r=rs[i];var t=radioText(r);list.push((on(r)?'[x] ':'[ ] ')+t.slice(0,25));
+ if(!pp&&/paypal/i.test(t)&&!/express/i.test(t))pp=r;}
+if(!pp)return 'none|'+list.join(' · ');
+if(on(pp))return 'already';
+// wie ein Finger: zuerst die Beschriftung antippen, sonst das Feld selbst
+var l=(pp.id&&document.querySelector('label[for="'+pp.id+'"]'))||pp.closest('label');
+if(l&&vis(l)){l.click();}else{pp.click();}
+if(!on(pp))pp.click();
+if(!on(pp)){pp.checked=true;pp.dispatchEvent(new Event('input',{bubbles:true}));pp.dispatchEvent(new Event('change',{bubbles:true}));}
+return on(pp)?'clicked':'clicked-unconfirmed';})()"""
 
     /**
      * Übersichtsseite mit hinterlegter Zahlungsart („Zahlungsart: Rechnung [Ändern]“): ist es nicht PayPal,
@@ -256,6 +258,7 @@ function paySec(){var head=/^(zahlungsart|zahlungsmethode|bezahlart|bezahlmethod
         var paypalPays = 0
         var paymentChanges = 0
         var paymentInfo = ""
+        var paymentOptions = ""
 
         fun release() {
             handler.removeCallbacksAndMessages(null)
@@ -387,6 +390,26 @@ function paySec(){var head=/^(zahlungsart|zahlungsmethode|bezahlart|bezahlmethod
                                         status("Wähle Zahlungsart PayPal …")
                                         again()
                                     }
+                                    pp?.startsWith("\"none|") == true && paymentOptions.isEmpty() -> {
+                                        paymentOptions = pp.trim('"').removePrefix("none|")
+                                        // keine PayPal-Option sichtbar → evtl. erst „Ändern“/Stift nötig
+                                        if (paymentChanges < 2) {
+                                            web.evaluateJavascript(PAYMENT_CHANGE_JS) { pc ->
+                                                if (!cont.isActive) return@evaluateJavascript
+                                                val v = pc?.trim('"') ?: ""
+                                                if (v == "clicked") {
+                                                    paymentChanges++
+                                                    paymentOptions = ""
+                                                    status("Zahlungsart ändern → PayPal …")
+                                                    again()
+                                                } else {
+                                                    if (v == "paypal") paypalState = "gewählt"
+                                                    if (v.startsWith("none:")) paymentInfo = v.removePrefix("none:")
+                                                    stepPoll()
+                                                }
+                                            }
+                                        } else stepPoll()
+                                    }
                                     pp?.contains("already") == true -> {
                                         paypalState = "gewählt"
                                         stepPoll()
@@ -487,8 +510,9 @@ function paySec(){var head=/^(zahlungsart|zahlungsmethode|bezahlart|bezahlmethod
                                         !Store.preferPaypal(ctx) -> ""
                                         paypalState == "gewählt" || paypalClicks > 0 -> ", Zahlung: PayPal ✅"
                                         else -> ", Zahlung: PayPal NICHT gewählt" +
-                                            (if (paymentInfo.isNotEmpty()) " (Zahlungs-Abschnitt: „$paymentInfo“)" else " (keine PayPal-Auswahl gefunden)")
-                                    }
+                                            (if (paymentOptions.isNotEmpty()) " (Zahlungsarten: $paymentOptions)" else "") +
+                                            (if (paymentInfo.isNotEmpty()) " (Zahlungs-Abschnitt: „$paymentInfo“)" else "")
+                                    } + (if (paySec.isNotEmpty()) "\nÜbersicht: „${paySec.take(90)}“" else "")
                                     done(AutoBuyer.Result(AutoBuyer.Outcome.DRY_RUN_OK, "Bestellknopf „$label“ gefunden, $info$pay – Probelauf, nichts bestellt", t))
                                     return@evaluateJavascript
                                 }
