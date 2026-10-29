@@ -91,6 +91,13 @@ class BotService : Service() {
                     update("Prüfe Müller/MediaMarkt/BAUR …")
                     Checker.checkAll(ctx) { it.isWebShop }
                 }
+                if (Store.tgEnabled(ctx) && System.currentTimeMillis() - Store.lastRun(ctx, Store.RUN_TG) >= Store.tgInterval(ctx) * 60_000L) {
+                    Store.setLastRun(ctx, Store.RUN_TG, System.currentTimeMillis())
+                    update("Lese Telegram-Deals …")
+                    val (found, errors) = TelegramDeals.poll(ctx)
+                    tgStatus = (if (errors.isEmpty()) "OK" else "⚠️ " + errors.joinToString(" · ")) +
+                        " (${time(System.currentTimeMillis())}" + (if (found > 0) ", $found Treffer" else "") + ")"
+                }
             } catch (e: Exception) {
                 Store.setStatus(ctx, "Fehler im Dauerbetrieb: ${e.message}")
             }
@@ -138,6 +145,10 @@ class BotService : Service() {
         var alive = false
             private set
 
+        /** Ergebnis des letzten Telegram-Abrufs (für die Anzeige). */
+        @Volatile
+        var tgStatus = ""
+
         fun start(ctx: Context) {
             ContextCompat.startForegroundService(ctx, Intent(ctx, BotService::class.java))
         }
@@ -161,7 +172,9 @@ class BotService : Service() {
                 .filter { !Store.shopEnabled(ctx, it.first) }.joinToString { it.second }
             return "Amazon alle ${Store.amazonInterval(ctx)} Min. (zuletzt ${time(a)}, nächste ~$nextA) · " +
                 "Müller/MediaMarkt/BAUR alle ${Store.interval(ctx).coerceAtLeast(5)} Min. (zuletzt ${time(s)}) · " +
-                "$active von ${all.size} Produkten aktiv" + (if (off.isNotEmpty()) " · AUS: $off" else "")
+                "$active von ${all.size} Produkten aktiv" + (if (off.isNotEmpty()) " · AUS: $off" else "") +
+                (if (Store.tgEnabled(ctx)) " · Telegram (${TelegramDeals.channels(ctx).joinToString { "@$it" }}) alle ${Store.tgInterval(ctx)} Min." +
+                    (if (tgStatus.isNotEmpty()) ": $tgStatus" else "") else "")
         }
 
         private fun buildNotification(ctx: Context, text: String): android.app.Notification {

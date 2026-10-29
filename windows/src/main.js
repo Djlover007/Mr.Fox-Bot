@@ -24,6 +24,7 @@ const Checker = require('./checker');
 const Payback = require('./payback');
 const WebWin = require('./webwin');
 const Log = require('./log');
+const Telegram = require('./telegram');
 
 let mainWin = null;
 let tray = null;
@@ -32,6 +33,7 @@ let botTimer = null;
 let botBusy = false;
 let botActivity = '';
 let awakeId = null;
+let tgStatus = '';
 
 // ---------------- Dauerbetrieb ----------------
 function botRunning() { return botTimer !== null; }
@@ -47,7 +49,8 @@ function summary() {
   const off = [['amazon', 'Amazon'], ...Shops.SHOPS.map((x) => [x.key, x.label])].filter(([k]) => !Store.shopEnabled(k)).map(([, l]) => l).join(', ');
   return `Amazon alle ${s.amazonInterval} Min. (zuletzt ${time(a)}, nächste ~${next}) · ` +
     `Müller/MediaMarkt/BAUR alle ${Math.max(5, s.interval)} Min. (zuletzt ${time(s.lastRun_shops)}) · ` +
-    `${active} von ${all.length} Produkten aktiv` + (off ? ` · AUS: ${off}` : '');
+    `${active} von ${all.length} Produkten aktiv` + (off ? ` · AUS: ${off}` : '') +
+    (s.tgEnabled ? ` · Telegram (${Telegram.channels().map((c) => '@' + c).join(', ')}) alle ${Math.max(1, Number(s.tgInterval) || 1)} Min.${tgStatus ? ': ' + tgStatus : ''}` : '');
 }
 
 async function botTick() {
@@ -67,6 +70,13 @@ async function botTick() {
       botActivity = 'Prüfe Müller/MediaMarkt/BAUR …';
       pushState();
       await Checker.checkAll((p) => Store.isWebShop(p));
+    }
+    if (Store.setting('tgEnabled') && Date.now() - Store.setting('lastRun_tg') >= Math.max(1, Number(Store.setting('tgInterval')) || 1) * 60000) {
+      Store.setSettings({ lastRun_tg: Date.now() });
+      botActivity = 'Lese Telegram-Deals …';
+      pushState();
+      const r = await Telegram.poll((d) => Checker.telegramDeal(d));
+      tgStatus = (r.errors.length ? '⚠️ ' + r.errors.join(' · ') : 'OK') + ` (${time(Date.now())}${r.found ? ', ' + r.found + ' Treffer' : ''})`;
     }
   } catch (e) {
     Store.setStatus('Fehler im Dauerbetrieb: ' + e.message);
@@ -407,6 +417,33 @@ const api = {
       return `${res.count} Produkte importiert.` + (res.disarmed ? ` Auto-Kauf bei ${res.disarmed} Produkt(en) ausgeschaltet (sonst würden Handy und PC doppelt kaufen) – bei Bedarf hier neu scharf schalten.` : '');
     } catch (e) {
       return 'Import fehlgeschlagen: ' + e.message;
+    }
+  },
+  tgSave: (o) => {
+    const max = o.maxPrice === '' || o.maxPrice == null ? null : Number(String(o.maxPrice).replace(',', '.'));
+    if (max != null && isNaN(max)) return 'Höchstpreis ist keine Zahl.';
+    const chans = String(o.channels || '').split(/[\s,;]+/).map(Telegram.channelName).filter(Boolean);
+    const prev = Telegram.channels().join(',');
+    Store.setSettings({
+      tgEnabled: !!o.enabled,
+      tgChannels: chans.join(', '),
+      tgKeywords: String(o.keywords || '').trim(),
+      tgExclude: String(o.exclude || '').trim(),
+      tgMaxPrice: max,
+      tgAction: ['alert', 'watch', 'cart'].includes(o.action) ? o.action : 'alert',
+      tgInterval: Math.max(1, parseInt(o.interval, 10) || 1),
+    });
+    if (prev !== chans.join(',')) tgStatus = '';
+    pushState();
+    if (o.enabled && !botRunning()) return 'Gespeichert. Telegram wird nur im Dauerbetrieb gelesen – oben „Dauerbetrieb starten“.';
+    return 'Gespeichert.' + (o.enabled ? ' Neue Beiträge ab jetzt werden geprüft (ältere lösen keinen Alarm aus).' : '');
+  },
+  tgTest: async () => {
+    if (!Telegram.channels().length) return { error: 'Kein Kanal eingetragen.' };
+    try {
+      return { items: await Telegram.test(5) };
+    } catch (e) {
+      return { error: e.message };
     }
   },
   setSetting: (k, v) => {

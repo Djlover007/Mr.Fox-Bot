@@ -30,6 +30,17 @@ Installation: `MrFoxBot-Setup-….exe` herunterladen und starten. Windows SmartS
 
 Entwicklung: `cd windows && npm install && npm start`; Selbsttest: `npx electron . --selftest`.
 
+## 📣 Telegram-Deals (App und Windows)
+
+Der Bot liest öffentliche Telegram-**Kanäle** über deren Webansicht `https://t.me/s/<kanal>` (ohne Anmeldung),
+z. B. `PirateDeals`. Gruppen/Chats (z. B. „Pirate Deals Chat“) und private Kanäle haben keine Webansicht.
+
+- Filter: Stichwörter (Komma = oder, Leerzeichen = alle Wörter), Ausschlusswörter, Höchstpreis.
+- Deal-Links (`s.pirat.deals/…`, `amzn.to/…`) werden bis zur Shopseite aufgelöst (auch JavaScript-Weiterleitungen).
+- Bei Treffer: nur Alarm, zusätzlich auf die Überwachungsliste (Zielpreis = Höchstpreis bzw. Deal-Preis) oder
+  zusätzlich automatisch in den Warenkorb. Kein Auto-Kauf direkt aus Telegram.
+- Beim ersten Abruf merkt sich der Bot nur den Stand (keine Alarmflut); gelesen wird im Dauerbetrieb.
+
 ## Funktionen
 - Produkte per Amazon-Link oder ASIN, optional mit Zielpreis
 - Hintergrundprüfung (mind. alle 15 Minuten)

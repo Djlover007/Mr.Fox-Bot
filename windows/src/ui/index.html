@@ -14,6 +14,7 @@
     <button data-tab="alerts">🔔 Alarme <span id="alertCount" class="pill"></span></button>
     <button data-tab="settings">⚙️ Einstellungen</button>
     <button data-tab="logins">🔑 Zugänge</button>
+    <button data-tab="telegram">📣 Telegram-Deals</button>
     <button data-tab="payback">💳 Payback</button>
     <button data-tab="data">📦 Export/Import</button>
   </nav>
@@ -96,6 +97,31 @@
 
   <section id="tab-logins" class="tab">
     <div id="loginCards"></div>
+  </section>
+
+  <section id="tab-telegram" class="tab">
+    <div class="card">
+      <h2>📣 Telegram-Deals</h2>
+      <p class="hint">Der Bot liest öffentliche Telegram-<b>Kanäle</b> über deren Webansicht (ohne Anmeldung) und meldet neue Deals, die zu deinem Filter passen.
+        Den Deal-Link (z. B. s.pirat.deals/…) löst er bis zur Shopseite auf. Gruppen/Chats und private Kanäle lassen sich so nicht lesen –
+        für „Pirate Deals Chat“ nimm den Kanal <b>PirateDeals</b>. Gelesen wird nur im Dauerbetrieb.</p>
+      <label class="cb"><input type="checkbox" id="tgEnabled"> Telegram-Deals lesen</label>
+      <label>Kanäle (Name oder t.me-Link, mehrere mit Komma) <input id="tgChannels" placeholder="PirateDeals"></label>
+      <label>Stichwörter (Komma = oder; Leerzeichen = alle Wörter müssen vorkommen; leer = ALLE Deals) <input id="tgKeywords" placeholder="z. B. ps5, lego, airpods pro, nintendo switch"></label>
+      <label>Ausschlusswörter (optional) <input id="tgExclude" placeholder="z. B. hülle, case, gebraucht"></label>
+      <div class="grid2">
+        <label>Höchstpreis in € (optional) <input id="tgMaxPrice" placeholder="leer = egal"></label>
+        <label>Prüfen alle … Minuten <input id="tgInterval" type="number" min="1"></label>
+      </div>
+      <div class="hint">Bei einem Treffer:</div>
+      <label class="cb"><input type="radio" name="tgAction" value="alert"> Nur Alarm (Windows-Benachrichtigung, Alarm-Liste, Discord)</label>
+      <label class="cb"><input type="radio" name="tgAction" value="watch"> Alarm + auf die Überwachungsliste setzen (Zielpreis = Höchstpreis bzw. Deal-Preis)</label>
+      <label class="cb"><input type="radio" name="tgAction" value="cart"> Alarm + auf die Liste + automatisch in den Warenkorb (du kaufst selbst)</label>
+      <div class="row">
+        <button id="tgSave" class="primary">Speichern</button>
+        <button id="tgTest">Testen: letzte 5 Beiträge mit Filter anzeigen</button>
+      </div>
+    </div>
   </section>
 
   <section id="tab-payback" class="tab">

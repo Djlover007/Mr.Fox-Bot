@@ -355,6 +355,50 @@ function renderPayback() {
 }
 $('pAuto').addEventListener('change', () => call('setSetting', 'paybackAutoBuy', $('pAuto').checked));
 
+// ---------------- Telegram ----------------
+let tgLoaded = false;
+function renderTelegram() {
+  if (tgLoaded) return;
+  tgLoaded = true;
+  const s = S.settings;
+  $('tgEnabled').checked = !!s.tgEnabled;
+  $('tgChannels').value = s.tgChannels || '';
+  $('tgKeywords').value = s.tgKeywords || '';
+  $('tgExclude').value = s.tgExclude || '';
+  $('tgMaxPrice').value = s.tgMaxPrice == null ? '' : String(s.tgMaxPrice).replace('.', ',');
+  $('tgInterval').value = s.tgInterval || 1;
+  document.querySelectorAll('input[name=tgAction]').forEach((r) => { r.checked = r.value === (s.tgAction || 'alert'); });
+}
+$('tgSave').addEventListener('click', async () => {
+  const action = (document.querySelector('input[name=tgAction]:checked') || {}).value || 'alert';
+  if ($('tgEnabled').checked && !$('tgKeywords').value.trim()) {
+    const ok = await modal('Ohne Stichwörter?', 'Ohne Stichwörter meldet der Bot JEDEN Deal des Kanals – bei großen Kanälen sind das hunderte am Tag' +
+      (action !== 'alert' ? ' und alle landen auf deiner Liste' + (action === 'cart' ? ' und im Warenkorb' : '') : '') + '.\n\nTrotzdem speichern?',
+    [['Abbrechen', false], ['Trotzdem speichern', true, 'primary']]);
+    if (!ok) return;
+  }
+  toast(await call('tgSave', {
+    enabled: $('tgEnabled').checked, channels: $('tgChannels').value, keywords: $('tgKeywords').value,
+    exclude: $('tgExclude').value, maxPrice: $('tgMaxPrice').value.trim(), interval: $('tgInterval').value, action,
+  }), 8000);
+});
+$('tgTest').addEventListener('click', async () => {
+  $('tgTest').disabled = true;
+  toast('Lese Telegram … (passende Links werden aufgelöst, kann etwas dauern)', 4000);
+  const r = await call('tgTest');
+  $('tgTest').disabled = false;
+  if (r.error) return modal('Telegram-Test', '⚠️ ' + r.error);
+  const box = el('div');
+  box.append(el('p', { class: 'hint' }, 'Test mit den GESPEICHERTEN Filtern (erst speichern, dann testen).'));
+  for (const it of r.items) {
+    const tg = it.target ? (it.target.shop === 'amazon' ? 'Amazon ' + it.target.asin : it.target.shop + ' ' + it.target.id) : (it.resolved ? 'anderer Shop' : '');
+    box.append(el('div', { class: 'catitem' },
+      el('span', {}, (it.ok ? '✅ ' : '⏭️ ') + `@${it.channel} #${it.id}: ${it.title}` + (it.price != null ? ' – ' + money(it.price) : '') + `\n(${it.why}${tg ? ' → ' + tg : ''})`),
+      it.resolved ? el('button', { onclick: () => call('open', it.resolved) }, 'Öffnen') : el('span')));
+  }
+  return modal('Telegram-Test: letzte Beiträge', box, [['Schließen', true]]);
+});
+
 // ---------------- Daten ----------------
 $('exportBtn').addEventListener('click', async () => toast(await call('exportProducts'), 9000));
 $('importBtn').addEventListener('click', async () => toast(await call('importProducts', $('importSettings').checked), 12000));
@@ -373,6 +417,7 @@ async function refresh() {
   renderSettings();
   renderLogins();
   renderPayback();
+  renderTelegram();
 }
 
 let pending = false;

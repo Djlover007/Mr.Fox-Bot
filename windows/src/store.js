@@ -31,6 +31,15 @@ const DEFAULTS = {
   status: '–',
   lastRun_amazon: 0,
   lastRun_shops: 0,
+  // Telegram-Deals
+  tgEnabled: false,
+  tgChannels: 'PirateDeals',
+  tgKeywords: '',
+  tgExclude: '',
+  tgMaxPrice: null,
+  tgAction: 'alert',
+  tgInterval: 1,
+  lastRun_tg: 0,
 };
 
 let file = null;
@@ -200,7 +209,7 @@ function clearAlerts() {
 }
 
 // ---------- Export / Import (gleiches Format wie die Android-App) ----------
-const SETTING_KEYS = ['domain', 'interval', 'amazonInterval', 'drop', 'webhook', 'autoCart', 'preferPaypal'];
+const SETTING_KEYS = ['domain', 'interval', 'amazonInterval', 'drop', 'webhook', 'autoCart', 'preferPaypal', 'tgEnabled', 'tgChannels', 'tgKeywords', 'tgExclude', 'tgMaxPrice', 'tgAction', 'tgInterval'];
 
 function exportJson() {
   load();

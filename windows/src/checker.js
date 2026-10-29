@@ -279,4 +279,57 @@ function handleCategory(shop, cat, items) {
   })();
 }
 
-module.exports = { checkAll, checkOne, offerInfo, sendDiscord, sendAllOffers, notifyUser, paybackStarter };
+/**
+ * Treffer aus einem Telegram-Kanal: Alarm + je nach Einstellung auf die Liste setzen oder in den Warenkorb.
+ * deal: {channel, post, title, price, link, resolved, target, action}
+ */
+async function telegramDeal(d) {
+  const t = d.target;
+  const lines = [];
+  let addedId = null;
+  if (d.action !== 'alert') {
+    if (!t) {
+      lines.push('ℹ️ Link führt nicht zu Amazon/Müller/MediaMarkt/BAUR – nur Alarm');
+    } else {
+      const id = t.shop === 'amazon' ? t.asin : t.id;
+      if (!Store.get(id)) {
+        const maxPrice = Store.setting('tgMaxPrice');
+        const target = maxPrice != null && maxPrice !== '' ? Number(maxPrice) : d.price;
+        Store.add(t.shop === 'amazon'
+          ? { asin: id, name: d.title.slice(0, 80), target, lastAlertPrice: d.price }
+          : { asin: id, name: d.title.slice(0, 80), target, lastAlertPrice: d.price, shop: t.shop, url: t.url });
+        addedId = id;
+        lines.push('👀 Auf die Überwachungsliste gesetzt' + (target != null ? ` (Zielpreis ${money(target)})` : ''));
+      } else {
+        lines.push('👀 Steht schon auf der Überwachungsliste');
+      }
+      if (d.action === 'cart') {
+        const ws = t.shop === 'amazon' ? null : Shops.byKey(t.shop);
+        let res;
+        try {
+          res = ws ? await ShopBuyer.addToCart(ws, t.url, id) : await A.addToCart(id, null);
+        } catch (e) {
+          res = { result: 'FAILED', detail: e.message || 'Fehler' };
+        }
+        if (res.result === 'OK') Store.update(id, (p) => { p.lastCartAdd = Date.now(); });
+        lines.push(res.result === 'OK' ? '✅ Automatisch in den Warenkorb gelegt'
+          : res.result === 'NOT_LOGGED_IN' ? '⚠️ Nicht angemeldet: ' + res.detail
+            : '⚠️ Warenkorb hat nicht geklappt: ' + res.detail);
+      }
+    }
+  }
+  const url = d.resolved || d.link;
+  // Fußzeilen des Kanals (nur Links/Domains) weglassen
+  const body = String(d.post.text || '').split('\n')
+    .filter((l) => l.replace(/(https?:\/\/)?[\w.äöüß-]+\.(de|com|deals|me|org|net|to|eu)(\/\S*)?/gi, '').replace(/[|•·\-–\s]/g, '').length >= 3)
+    .slice(0, 8).join('\n').slice(0, 500);
+  const msg = `📣 Telegram @${d.channel}${d.price != null ? ' · ' + money(d.price) : ''}\n${body}` + (lines.length ? '\n' + lines.join('\n') : '');
+  const ws = t && t.shop !== 'amazon' ? Shops.byKey(t.shop) : null;
+  const cart = t && t.shop === 'amazon' ? A.cartUrl(t.asin, null) : url;
+  notifyUser('📣 ' + d.title, msg, { page: url, cart, checkout: ws ? ws.cartUrl : A.checkoutUrl() });
+  if (Store.setting('openOnAlert')) WebWin.open(url);
+  await sendDiscord(Store.setting('webhook'), `**${d.title}**\n${msg}\n<${url}>\nPost: <https://t.me/${d.post.post}>`);
+  if (addedId) checkOne(addedId).catch(() => {});
+}
+
+module.exports = { checkAll, checkOne, offerInfo, sendDiscord, sendAllOffers, notifyUser, paybackStarter, telegramDeal };

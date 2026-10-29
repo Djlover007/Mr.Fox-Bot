@@ -104,10 +104,27 @@ function mm(u) {
   return page('MM', '<h1>MM</h1>');
 }
 
+/** Telegram-Webansicht (t.me/s/…) und Deal-Weiterleitungen. */
+const tgPosts = [{ id: 100, html: 'Alter Deal<br>9,99€<br><a href="https://s.pirat.deals/aaa">s.pirat.deals/aaa</a>' }];
+function telegram(u) {
+  if (u.pathname !== '/s/MockDeals') return page('Telegram', 'Gruppe ohne Vorschau');
+  const msgs = tgPosts.map((p) => `<div class="tgme_widget_message_wrap"><div class="tgme_widget_message" data-post="MockDeals/${p.id}">
+    <div class="tgme_widget_message_text">${p.html}<br><br><a href="https://piratedeals.de/">piratedeals.de</a> | <a href="https://t.me/addlist/x">Ordner</a></div>
+    <time datetime="2026-10-29T17:00:00+00:00"></time></div></div>`).join('');
+  return page('MockDeals – Telegram', `<div class="tgme_channel_info">Mock Deals</div>${msgs}`);
+}
+function pirat(u) {
+  if (u.pathname === '/bbb') return { redirect: 'https://www.mock-amazon.test/dp/B000TEST03?tag=pirate-21' };
+  if (u.pathname === '/js') return page('Weiterleitung', "<script>setTimeout(function(){location.href='https://www.mock-amazon.test/dp/B000TEST02?tag=x'},300)</script>Weiterleitung …");
+  return page('Deal', 'Kein Shop');
+}
+
 function handler(req) {
   const u = new URL(req.url);
   let r;
-  if (u.hostname === 'www.mock-amazon.test') r = amazon(u);
+  if (u.hostname === 't.me') r = telegram(u);
+  else if (u.hostname === 's.pirat.deals') r = pirat(u);
+  else if (u.hostname === 'www.mock-amazon.test') r = amazon(u);
   else if (u.hostname === 'www.mock-shop.test') r = shop(u);
   else if (u.hostname === 'www.mock-mm.test') r = mm(u);
   else return new Response('blocked', { status: 404 });
@@ -193,7 +210,29 @@ async function run() {
     const im = Store.importJson(ex2, false);
     check('Export/Import (Auto-Kauf aus)', ex.products.length === 1 && im.count === 1 && im.disarmed === 1 && Store.get('B000TEST01').autoBuy === false, JSON.stringify(im));
 
-    // 14) Oberfläche lädt ohne Fehler
+    // 14) Telegram-Deals
+    const Telegram = require('./telegram');
+    Store.setSettings({ tgEnabled: true, tgChannels: 'MockDeals', tgKeywords: 'konsole', tgExclude: 'hülle', tgMaxPrice: null, tgAction: 'watch' });
+    let tr = await Telegram.poll((d) => Checker.telegramDeal(d));
+    check('Telegram: erster Abruf merkt nur den Stand', tr.found === 0 && Store.setting('tgLast_mockdeals') === 100 && !tr.errors.length, JSON.stringify(tr));
+    tgPosts.push({ id: 101, html: 'Lego Technic Set<br>💰 19,99€<br><a href="https://s.pirat.deals/aaa">s.pirat.deals/aaa</a>' });
+    tgPosts.push({ id: 102, html: '🔥 Mr.Fox Konsole Pro<br>💰 1.199,00€ statt 1.499€<br>Gutschein: FOX10<br><a href="https://s.pirat.deals/bbb">s.pirat.deals/bbb</a>' });
+    tgPosts.push({ id: 103, html: 'Konsole Mini<br>49,99 €<br><a href="https://s.pirat.deals/js">s.pirat.deals/js</a>' });
+    tgPosts.push({ id: 104, html: 'Konsole Hülle<br>5,99 €<br><a href="https://s.pirat.deals/aaa">s.pirat.deals/aaa</a>' });
+    tr = await Telegram.poll((d) => Checker.telegramDeal(d));
+    const p3 = Store.get('B000TEST03');
+    const p2 = Store.get('B000TEST02');
+    check('Telegram: 2 Treffer (Stichwort, Ausschlusswort)', tr.found === 2, JSON.stringify(tr));
+    check('Telegram: Weiterleitung (302) aufgelöst + auf Liste', p3 && p3.name === 'Mr.Fox Konsole Pro' && p3.target === 1199, JSON.stringify(p3));
+    check('Telegram: JS-Weiterleitung aufgelöst + auf Liste', p2 && p2.target === 49.99, JSON.stringify(p2));
+    check('Telegram: Alarm erzeugt', Store.alerts().some((a) => /📣 Telegram @MockDeals/.test(a.text) && /FOX10/.test(a.text)), (Store.alerts()[0] || {}).text);
+    const tt = await Telegram.test(5);
+    check('Telegram: Test-Ansicht', tt.length === 5 && tt.filter((x) => x.ok).length === 2, tt.map((x) => x.id + ':' + x.ok + ':' + x.why).join(', '));
+    const tbad = await Telegram.fetchChannel('PirateDealsChat').then(() => 'kein Fehler', (e) => e.message);
+    check('Telegram: Gruppe wird erkannt', /kein öffentlicher Kanal/.test(tbad), tbad);
+    Store.setSettings({ tgEnabled: false });
+
+    // 15) Oberfläche lädt ohne Fehler
     const errors = [];
     const w = new BrowserWindow({ show: false, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true } });
     w.webContents.on('console-message', (_e, level, msg) => { if (level >= 3) errors.push(msg); });
@@ -202,14 +241,14 @@ async function run() {
     const n = await w.webContents.executeJavaScript("document.querySelectorAll('.prod').length+'|'+document.getElementById('sigver').textContent");
     if (process.env.MRFOX_SHOT) {
       w.setSize(1180, 900);
-      for (const [tab, file] of [['products', 'shot-products.png'], ['settings', 'shot-settings.png'], ['payback', 'shot-payback.png']]) {
+      for (const [tab, file] of [['products', 'shot-products.png'], ['settings', 'shot-settings.png'], ['telegram', 'shot-telegram.png']]) {
         await w.webContents.executeJavaScript(`document.querySelector('nav button[data-tab="${tab}"]').click()`);
         await B.sleep(400);
         const img = await w.webContents.capturePage();
         require('fs').writeFileSync(path.join(process.env.MRFOX_SHOT, file), img.toPNG());
       }
     }
-    check('Oberfläche lädt', !errors.length && n.startsWith('1|'), errors.join(' ; ') || n);
+    check('Oberfläche lädt', !errors.length && n.startsWith('3|'), errors.join(' ; ') || n);
     w.destroy();
   } catch (e) {
     check('Ausnahme', false, e.stack || e.message);

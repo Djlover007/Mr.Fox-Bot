@@ -139,4 +139,4 @@ async function parseAmazon(html, asin) {
   return { title: o.title, price, available, offerId: normOffer(o.offer), seller: o.seller || null };
 }
 
-module.exports = { BlockedError, parsePrice, normOffer, extractOfferId, extractAsin, fetchAmazon, parseAmazon };
+module.exports = { BlockedError, parsePrice, normOffer, extractOfferId, extractAsin, fetchAmazon, parseAmazon, parserWc };

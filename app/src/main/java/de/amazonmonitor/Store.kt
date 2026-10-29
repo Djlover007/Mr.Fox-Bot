@@ -237,6 +237,36 @@ object Store {
 
     const val RUN_AMAZON = "amazon"
     const val RUN_SHOPS = "shops"
+    const val RUN_TG = "telegram"
+
+    // --- Telegram-Deals
+    fun tgEnabled(c: Context): Boolean = prefs(c).getBoolean("tg_enabled", false)
+    fun tgChannels(c: Context): String = prefs(c).getString("tg_channels", "PirateDeals") ?: "PirateDeals"
+    fun tgKeywords(c: Context): String = prefs(c).getString("tg_keywords", "") ?: ""
+    fun tgExclude(c: Context): String = prefs(c).getString("tg_exclude", "") ?: ""
+    fun tgMaxPrice(c: Context): Double? = prefs(c).getString("tg_max", "")?.replace(',', '.')?.toDoubleOrNull()
+    /** "alert" = nur Alarm, "watch" = auf die Liste, "cart" = auf die Liste + Warenkorb */
+    fun tgAction(c: Context): String = prefs(c).getString("tg_action", "alert") ?: "alert"
+    fun tgInterval(c: Context): Int = prefs(c).getInt("tg_interval", 1).coerceAtLeast(1)
+    fun tgLast(c: Context, channel: String): Long = prefs(c).getLong("tg_last_" + channel.lowercase(), 0L)
+    fun setTgLast(c: Context, channel: String, id: Long) {
+        prefs(c).edit().putLong("tg_last_" + channel.lowercase(), id).apply()
+    }
+
+    fun saveTelegram(
+        c: Context, enabled: Boolean, channels: String, keywords: String, exclude: String,
+        maxPrice: String, action: String, interval: Int,
+    ) {
+        prefs(c).edit()
+            .putBoolean("tg_enabled", enabled)
+            .putString("tg_channels", channels)
+            .putString("tg_keywords", keywords)
+            .putString("tg_exclude", exclude)
+            .putString("tg_max", maxPrice)
+            .putString("tg_action", action)
+            .putInt("tg_interval", interval.coerceAtLeast(1))
+            .apply()
+    }
 
     fun lastRun(c: Context, key: String): Long = prefs(c).getLong("last_run_$key", 0L)
 
@@ -354,6 +384,13 @@ object Store {
             .put("webhook", webhook(c))
             .put("autoCart", autoCart(c))
             .put("preferPaypal", preferPaypal(c))
+            .put("tgEnabled", tgEnabled(c))
+            .put("tgChannels", tgChannels(c))
+            .put("tgKeywords", tgKeywords(c))
+            .put("tgExclude", tgExclude(c))
+            .put("tgMaxPrice", tgMaxPrice(c) ?: JSONObject.NULL)
+            .put("tgAction", tgAction(c))
+            .put("tgInterval", tgInterval(c))
         return JSONObject()
             .put("app", "Mr.Fox Bot")
             .put("format", 1)
@@ -395,6 +432,13 @@ object Store {
             if (s.has("webhook")) e.putString("webhook", s.optString("webhook", ""))
             if (s.has("autoCart")) e.putBoolean("autocart", s.optBoolean("autoCart"))
             if (s.has("preferPaypal")) e.putBoolean("prefer_paypal", s.optBoolean("preferPaypal", true))
+            if (s.has("tgEnabled")) e.putBoolean("tg_enabled", s.optBoolean("tgEnabled"))
+            if (s.has("tgChannels")) e.putString("tg_channels", s.optString("tgChannels"))
+            if (s.has("tgKeywords")) e.putString("tg_keywords", s.optString("tgKeywords"))
+            if (s.has("tgExclude")) e.putString("tg_exclude", s.optString("tgExclude"))
+            if (s.has("tgMaxPrice")) e.putString("tg_max", if (s.isNull("tgMaxPrice")) "" else s.optDouble("tgMaxPrice").toString())
+            if (s.has("tgAction")) e.putString("tg_action", s.optString("tgAction", "alert"))
+            if (s.has("tgInterval")) e.putInt("tg_interval", s.optInt("tgInterval", 1).coerceAtLeast(1))
             e.apply()
         }
         return n to disarmed

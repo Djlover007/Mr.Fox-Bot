@@ -472,6 +472,79 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
+        // --- Telegram-Deals
+        root.addView(label("📣 Telegram-Deals"))
+        root.addView(TextView(this).apply {
+            text = "Liest öffentliche Telegram-KANÄLE über deren Webansicht (ohne Anmeldung) und meldet neue Deals, die zu " +
+                "deinem Filter passen. Den Deal-Link (z. B. s.pirat.deals/…) löst der Bot bis zur Shopseite auf. Gruppen/Chats " +
+                "und private Kanäle gehen so nicht – für „Pirate Deals Chat“ den Kanal PirateDeals nehmen. Läuft im Dauerbetrieb."
+            textSize = 12f
+        })
+        val cbTg = CheckBox(this).apply { text = "Telegram-Deals lesen"; isChecked = Store.tgEnabled(this@MainActivity) }
+        val inTgCh = edit("Kanäle (Name oder t.me-Link, mehrere mit Komma)", InputType.TYPE_CLASS_TEXT, Store.tgChannels(this))
+        val inTgKw = edit("Stichwörter (Komma = oder; Leerzeichen = alle Wörter; leer = ALLE Deals)", InputType.TYPE_CLASS_TEXT, Store.tgKeywords(this))
+        val inTgEx = edit("Ausschlusswörter (optional)", InputType.TYPE_CLASS_TEXT, Store.tgExclude(this))
+        val inTgMax = edit(
+            "Höchstpreis in € (optional)", InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL,
+            Store.tgMaxPrice(this)?.toString()?.replace('.', ',') ?: ""
+        )
+        val inTgInt = edit("Prüfen alle … Minuten (min. 1)", InputType.TYPE_CLASS_NUMBER, Store.tgInterval(this).toString())
+        val tgGroup = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
+        val tgActions = listOf(
+            "alert" to "Bei Treffer: nur Alarm (Benachrichtigung + Discord)",
+            "watch" to "Bei Treffer: Alarm + auf die Überwachungsliste",
+            "cart" to "Bei Treffer: Alarm + Liste + automatisch in den Warenkorb",
+        ).map { (key, t) ->
+            key to RadioButton(this).apply { id = View.generateViewId(); text = t; textSize = 13f }.also { tgGroup.addView(it) }
+        }
+        tgActions.firstOrNull { it.first == Store.tgAction(this) }?.second?.isChecked = true
+        for (v in listOf(cbTg, inTgCh, inTgKw, inTgEx, inTgMax, inTgInt, tgGroup)) root.addView(v)
+        fun saveTg() {
+            val action = tgActions.firstOrNull { it.second.isChecked }?.first ?: "alert"
+            val chans = inTgCh.text.toString().split(Regex("[\\s,;]+")).map { TelegramDeals.channelName(it) }.filter { it.isNotEmpty() }
+            Store.saveTelegram(
+                this, cbTg.isChecked, chans.joinToString(", "), inTgKw.text.toString().trim(), inTgEx.text.toString().trim(),
+                inTgMax.text.toString().trim(), action, inTgInt.text.toString().toIntOrNull() ?: 1
+            )
+            toast(
+                "Telegram gespeichert." + when {
+                    cbTg.isChecked && !BotService.alive -> " Gelesen wird nur im Dauerbetrieb – oben starten."
+                    cbTg.isChecked -> " Neue Beiträge ab jetzt werden geprüft."
+                    else -> ""
+                }
+            )
+        }
+        root.addView(button("Telegram speichern") {
+            if (cbTg.isChecked && inTgKw.text.isBlank()) {
+                AlertDialog.Builder(this)
+                    .setTitle("Ohne Stichwörter?")
+                    .setMessage("Ohne Stichwörter meldet der Bot JEDEN Deal des Kanals – bei großen Kanälen hunderte am Tag. Trotzdem speichern?")
+                    .setPositiveButton("Trotzdem speichern") { _, _ -> saveTg() }
+                    .setNegativeButton("Abbrechen", null)
+                    .show()
+            } else {
+                saveTg()
+            }
+        })
+        root.addView(button("Telegram testen: letzte 5 Beiträge mit Filter") {
+            toast("Lese Telegram … (gespeicherte Filter)")
+            val app = applicationContext
+            CoroutineScope(Dispatchers.Main).launch {
+                val lines = try {
+                    TelegramDeals.test(app, 5)
+                } catch (e: Exception) {
+                    listOf("⚠️ " + (e.message ?: "Fehler"))
+                }
+                if (isFinishing || isDestroyed) return@launch
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Telegram-Test")
+                    .setMessage(lines.joinToString("\n\n").ifEmpty { "Kein Kanal eingetragen." })
+                    .setPositiveButton("OK", null)
+                    .show()
+                    .findViewById<TextView>(android.R.id.message)?.setTextIsSelectable(true)
+            }
+        }.apply { textSize = 12f })
+
         // --- Produkte übertragen (Handy ↔ PC)
         root.addView(label("📦 Produkte übertragen (Handy ↔ PC)"))
         root.addView(TextView(this).apply {
