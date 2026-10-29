@@ -83,6 +83,15 @@ var pp=null,list=[];
 for(var i=0;i<rs.length;i++){var r=rs[i];var t=radioText(r);list.push((on(r)?'[x] ':'[ ] ')+t.slice(0,25));
  if(!pp&&/paypal/i.test(t)&&!/express/i.test(t))pp=r;}
 if(!pp){
+ // Karten mit „wählen“-Knopf je Zahlungsart (z. B. BAUR: data-testid inactive-trigger / active-trigger)
+ function isTrig(e){var id=e.getAttribute('data-testid')||'';return /^(in)?active-trigger$/.test(id)||((e.tagName==='BUTTON'||e.getAttribute('role')==='button')&&/^(wählen|auswählen)$/i.test(txt(e)));}
+ function hasPP(c){var tc=(c.textContent||'');return (/paypal/i.test(tc)||!!c.querySelector('img[alt*=paypal i],[class*=paypal i]'))&&!/paypal express|später bezahlen mit paypal|paypal ratenzahlung/i.test(tc);}
+ var trs=[].filter.call(document.querySelectorAll('button,[role=button],[data-testid]'),isTrig);
+ for(var m=0;m<trs.length;m++){var tr=trs[m];var cc=tr;
+  for(var up2=0;up2<8&&cc.parentElement;up2++){cc=cc.parentElement;
+   var nT=[].filter.call(cc.querySelectorAll('button,[role=button],[data-testid]'),isTrig).length;if(nT>1)break;
+   if(hasPP(cc)){if((tr.getAttribute('data-testid')||'')==='active-trigger')return 'already';
+    if(vis(tr)){tr.click();return 'clicked-card';}break;}}}
  // Kein Auswahlfeld: PayPal als anklickbare Kachel (z. B. BAUR). Nie Links in Kopf-/Fußzeile, nie „Express“.
  var cand=document.querySelectorAll('button,[role=button],[role=option],[role=tab],li,label,div,span');var best=null,bl=1e9;
  for(var k=0;k<cand.length;k++){var c=cand[k];if(c.closest('footer,header,nav'))continue;var a=c.closest('a[href]');
