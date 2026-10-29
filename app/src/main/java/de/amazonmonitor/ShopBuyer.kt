@@ -350,6 +350,7 @@ function paySec(){var head=/^(zahlungsart|zahlungsmethode|bezahlart|bezahlmethod
 
         fun done(r: AutoBuyer.Result) {
             if (cont.isActive) {
+                log("Ergebnis: ${r.outcome} – ${r.detail}")
                 cont.resume(r)
                 release()
             }
@@ -665,7 +666,8 @@ function paySec(){var head=/^(zahlungsart|zahlungsmethode|bezahlart|bezahlmethod
                                         "Gesamtbetrag nicht lesbar" + o.optString("hint").let { if (it.isNotEmpty()) " (gefunden: $it)" else "" }
                                     val pay = when {
                                         !Store.preferPaypal(ctx) -> ""
-                                        paypalState == "gewählt" || paypalClicks > 0 -> ", Zahlung: PayPal ✅"
+                                        paypalState == "gewählt" || paySec.contains("paypal", true) -> ", Zahlung: PayPal ✅"
+                                        paypalClicks > 0 -> ", Zahlung: PayPal angeklickt, aber nicht bestätigt ⚠️"
                                         else -> ", Zahlung: PayPal NICHT gewählt" +
                                             (if (paymentOptions.isNotEmpty()) " (Zahlungsarten: $paymentOptions)" else "") +
                                             (if (paymentInfo.isNotEmpty()) " (Zahlungs-Abschnitt: „$paymentInfo“)" else "")
