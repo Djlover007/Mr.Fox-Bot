@@ -296,8 +296,8 @@ async function telegramDeal(d) {
         const maxPrice = Store.setting('tgMaxPrice');
         const target = maxPrice != null && maxPrice !== '' ? Number(maxPrice) : d.price;
         Store.add(t.shop === 'amazon'
-          ? { asin: id, name: d.title.slice(0, 80), target, lastAlertPrice: d.price }
-          : { asin: id, name: d.title.slice(0, 80), target, lastAlertPrice: d.price, shop: t.shop, url: t.url });
+          ? { asin: id, name: (d.name || id).slice(0, 80), target, lastAlertPrice: d.price }
+          : { asin: id, name: (d.name || id).slice(0, 80), target, lastAlertPrice: d.price, shop: t.shop, url: t.url });
         addedId = id;
         lines.push('👀 Auf die Überwachungsliste gesetzt' + (target != null ? ` (Zielpreis ${money(target)})` : ''));
       } else {
@@ -321,7 +321,7 @@ async function telegramDeal(d) {
   const url = d.resolved || d.link;
   // Fußzeilen des Kanals (nur Links/Domains) weglassen
   const body = String(d.post.text || '').split('\n')
-    .filter((l) => l.replace(/(https?:\/\/)?[\w.äöüß-]+\.(de|com|deals|me|org|net|to|eu)(\/\S*)?/gi, '').replace(/[|•·\-–\s]/g, '').length >= 3)
+    .filter((l) => l.replace(/https?:\/\/\S+|[\w.äöüß-]+\.(deals|de|com|me|org|net|to|eu|ly)\b(\/\S*)?/gi, '').replace(/[|•·\-–\s]/g, '').length >= 3)
     .slice(0, 8).join('\n').slice(0, 500);
   const msg = `📣 Telegram @${d.channel}${d.price != null ? ' · ' + money(d.price) : ''}\n${body}` + (lines.length ? '\n' + lines.join('\n') : '');
   const ws = t && t.shop !== 'amazon' ? Shops.byKey(t.shop) : null;

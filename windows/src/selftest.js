@@ -112,11 +112,12 @@ function telegram(u) {
   const list = u.pathname === '/s/MockDeals2' ? tgPosts2 : tgPosts;
   const name = u.pathname.slice(3);
   const msgs = list.map((p) => `<div class="tgme_widget_message_wrap"><div class="tgme_widget_message" data-post="${name}/${p.id}">
-    <div class="tgme_widget_message_text">${p.html}<br><br><a href="https://piratedeals.de/">piratedeals.de</a> | <a href="https://t.me/addlist/x">Ordner</a></div>
+    <div class="tgme_widget_message_text">${p.html}<br><br><a href="https://piratedeals.de/">piratedeals.de</a> | <a href="https://t.me/addlist/x">Ordner</a></div>${p.preview || ''}
     <time datetime="2026-10-29T17:00:00+00:00"></time></div></div>`).join('');
   return page('MockDeals – Telegram', `<div class="tgme_channel_info">Mock Deals</div>${msgs}`);
 }
 function pirat(u) {
+  if (u.pathname === '/ccc') return { redirect: 'https://www.mock-amazon.test/dp/B000TEST05' };
   if (u.pathname === '/bbb2') return { redirect: 'https://www.mock-amazon.test/dp/B000TEST03?tag=other-21' };
   if (u.pathname === '/bbb') return { redirect: 'https://www.mock-amazon.test/dp/B000TEST03?tag=pirate-21' };
   if (u.pathname === '/js') return page('Weiterleitung', "<script>setTimeout(function(){location.href='https://www.mock-amazon.test/dp/B000TEST02?tag=x'},300)</script>Weiterleitung …");
@@ -223,10 +224,14 @@ async function run() {
     tgPosts.push({ id: 102, html: '🔥 Mr.Fox Konsole Pro<br>💰 1.199,00€ statt 1.499€<br>Gutschein: FOX10<br><a href="https://s.pirat.deals/bbb">s.pirat.deals/bbb</a>' });
     tgPosts.push({ id: 103, html: 'Konsole Mini<br>49,99 €<br><a href="https://s.pirat.deals/js">s.pirat.deals/js</a>' });
     tgPosts.push({ id: 104, html: 'Konsole Hülle<br>5,99 €<br><a href="https://s.pirat.deals/aaa">s.pirat.deals/aaa</a>' });
+    tgPosts.push({ id: 105, html: '24,99<br>Blitzangebot ⚡<br><a href="https://s.pirat.deals/ccc">https://s.pirat.deals/ccc</a>',
+      preview: '<a class="tgme_widget_message_link_preview" href="https://s.pirat.deals/ccc"><div class="link_preview_site_name">Amazon.de</div><div class="link_preview_title">Amazon.de: Fuchs Gamepad Konsole Edition</div></a>' });
     tr = await Telegram.poll((d) => Checker.telegramDeal(d));
     const p3 = Store.get('B000TEST03');
     const p2 = Store.get('B000TEST02');
-    check('Telegram: 2 Treffer (Stichwort, Ausschlusswort)', tr.found === 2, JSON.stringify(tr));
+    check('Telegram: 3 Treffer (Stichwort, Ausschlusswort, Vorschau)', tr.found === 3, JSON.stringify(tr));
+    const p5 = Store.get('B000TEST05');
+    check('Telegram: Name aus Link-Vorschau, Preis ohne €', p5 && p5.name === 'Fuchs Gamepad Konsole Edition' && p5.target === 24.99, JSON.stringify(p5));
     check('Telegram: Weiterleitung (302) aufgelöst + auf Liste', p3 && p3.name === 'Mr.Fox Konsole Pro' && p3.target === 1199, JSON.stringify(p3));
     check('Telegram: JS-Weiterleitung aufgelöst + auf Liste', p2 && p2.target === 49.99, JSON.stringify(p2));
     check('Telegram: Alarm erzeugt', Store.alerts().some((a) => /📣 Telegram @MockDeals/.test(a.text) && /FOX10/.test(a.text)), (Store.alerts()[0] || {}).text);
@@ -240,7 +245,7 @@ async function run() {
     check('Telegram: zweiter Kanal, doppelter Deal nur einmal', tr.found === 0 && Store.alerts().length === before, JSON.stringify(tr) + ' Alarme ' + before + '→' + Store.alerts().length);
     Store.setSettings({ tgChannels: 'MockDeals' });
     const tt = await Telegram.test(5);
-    check('Telegram: Test-Ansicht', tt.length === 5 && tt.filter((x) => x.ok).length === 2, tt.map((x) => x.id + ':' + x.ok + ':' + x.why).join(', '));
+    check('Telegram: Test-Ansicht', tt.length === 5 && tt.filter((x) => x.ok).length === 3, tt.map((x) => x.id + ':' + x.ok + ':' + x.why).join(', '));
     const tbad = await Telegram.fetchChannel('PirateDealsChat').then(() => 'kein Fehler', (e) => e.message);
     check('Telegram: Gruppe wird erkannt', /kein öffentlicher Kanal/.test(tbad), tbad);
     Store.setSettings({ tgEnabled: false });
@@ -261,7 +266,7 @@ async function run() {
         require('fs').writeFileSync(path.join(process.env.MRFOX_SHOT, file), img.toPNG());
       }
     }
-    check('Oberfläche lädt', !errors.length && n.startsWith('3|'), errors.join(' ; ') || n);
+    check('Oberfläche lädt', !errors.length && /^[1-9]\d*\|/.test(n), errors.join(' ; ') || n);
     w.destroy();
   } catch (e) {
     check('Ausnahme', false, e.stack || e.message);

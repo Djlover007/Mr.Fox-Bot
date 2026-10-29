@@ -391,7 +391,7 @@ $('tgTest').addEventListener('click', async () => {
   const box = el('div');
   box.append(el('p', { class: 'hint' }, 'Test mit den GESPEICHERTEN Filtern (erst speichern, dann testen).'));
   for (const it of r.items) {
-    const tg = it.target ? (it.target.shop === 'amazon' ? 'Amazon ' + it.target.asin : it.target.shop + ' ' + it.target.id) : (it.resolved ? 'anderer Shop' : '');
+    const tg = it.target ? (it.target.shop === 'amazon' ? 'Amazon ' + it.target.asin : it.target.shop + ' ' + it.target.id) : (it.resolved ? 'anderer Shop (' + (it.host || '?') + ')' : '');
     box.append(el('div', { class: 'catitem' },
       el('span', {}, (it.ok ? '✅ ' : '⏭️ ') + `@${it.channel} #${it.id}: ${it.title}` + (it.price != null ? ' – ' + money(it.price) : '') + `\n(${it.why}${tg ? ' → ' + tg : ''})\nText: ${it.snippet || ''}`),
       it.resolved ? el('button', { onclick: () => call('open', it.resolved) }, 'Öffnen') : el('span')));

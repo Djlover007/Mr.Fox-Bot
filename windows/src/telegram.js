@@ -26,7 +26,10 @@ for(var i=0;i<ms.length;i++){var m=ms[i];var post=m.getAttribute('data-post')||'
  var bt=m.querySelectorAll('.tgme_widget_message_inline_button[href],a.tgme_widget_message_link_preview[href]');
  for(var k=0;k<bt.length;k++){var h2=bt[k].getAttribute('href');if(/^https?:/i.test(h2))links.push(h2);}
  var tm=m.querySelector('time[datetime]');
- out.push({id:id,post:post,text:text,links:links,time:tm?tm.getAttribute('datetime'):''});}
+ var lp=m.querySelector('.tgme_widget_message_link_preview');
+ function pv(s){var e=lp&&lp.querySelector(s);return e?(e.textContent||'').replace(/\s+/g,' ').trim():'';}
+ out.push({id:id,post:post,text:text,links:links,time:tm?tm.getAttribute('datetime'):'',
+  preview:pv('.link_preview_title'),previewDesc:pv('.link_preview_description'),site:pv('.link_preview_site_name')});}
 return JSON.stringify(out);})`;
 
 function channelName(s) {
@@ -52,11 +55,18 @@ async function fetchChannel(name) {
 /** Erster €-Betrag im Text (bei Deal-Posts meist der Angebotspreis). */
 function dealPrice(text) {
   const m = /(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)\s?€|€\s?(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?)/.exec(text || '');
-  if (!m) return null;
-  return Scraper.parsePrice(m[1] || m[2]);
+  if (m) return Scraper.parsePrice(m[1] || m[2]);
+  // Preis ohne €-Zeichen in einer eigenen Zeile (z. B. „30,99“)
+  const line = String(text || '').split('\n').map((l) => l.trim()).find((l) => /^\d{1,5}[.,]\d{2}$/.test(l));
+  return line ? Scraper.parsePrice(line) : null;
 }
 
-const JUNK = /https?:\/\/|www\.|\.(de|com|deals|net|org)\b|schnäppchen|preisfehler|angebote:|anzeige|werbung|partnerlink|affiliate|gutschein|coupon|code:|rabattcode|versand|prime|statt\s/i;
+function postPrice(p) { const v = dealPrice(p.text); return v != null ? v : dealPrice(p.previewDesc); }
+
+/** Alles, was zum Filtern zählt: Text + Link-Vorschau. */
+function fullText(p) { return [p.text, p.preview, p.previewDesc].filter(Boolean).join('\n'); }
+
+const JUNK = /https?:\/\/|www\.|\.(de|com|deals|net|org)\b|schnäppchen|preisfehler|angebote:|anzeige|werbung|partnerlink|affiliate|gutschein|coupon|code:|rabattcode|versand|prime|statt\s|werbeaktion|blitzangebot|zeitlich begrenzt|aktivieren|kostenlos/i;
 
 /** Produktname: erste Zeile mit genug Buchstaben, ohne Links, Werbe-Kopfzeile, Preis- oder Gutscheinzeile. */
 function title(text) {
@@ -65,15 +75,34 @@ function title(text) {
   return (good || lines[0] || 'Telegram-Deal').slice(0, 100);
 }
 
-function snippet(text) {
-  return String(text || '').split('\n').map((l) => l.trim()).filter(Boolean).join(' / ').slice(0, 160);
+function goodLine(text) {
+  const lines = String(text || '').split('\n').map((l) => l.replace(/[^\p{L}\p{N}\s.,:;!?()&%€+\-–/»«"'|]/gu, '').trim());
+  const g = lines.find((l) => l.length > 3 && !JUNK.test(l) && (l.match(/\p{L}/gu) || []).length >= 6);
+  return g ? g.slice(0, 100) : null;
+}
+
+/** Produktname aus Link-Vorschau oder Text; null, wenn der Beitrag keinen hat. */
+function name(p) {
+  const pt = String(p.preview || '').replace(/^[\w.-]+\.(de|com|eu|net)\s*[:|–-]\s*/i, '').trim();
+  if ((pt.match(/\p{L}/gu) || []).length >= 6) return pt.slice(0, 100);
+  return goodLine(p.text);
+}
+
+function host(url) { try { return new URL(url).hostname.replace(/^www\./, ''); } catch (e) { return null; } }
+
+function displayName(p, resolved) { return name(p) || (host(resolved) ? 'Deal bei ' + host(resolved) : 'Telegram-Deal'); }
+
+function snippet(p) {
+  let s = String(p.text || '').split('\n').map((l) => l.trim()).filter(Boolean).join(' / ').slice(0, 160);
+  if (p.preview || p.site) s += (' / Vorschau: ' + (p.site || '') + ': ' + (p.preview || '')).slice(0, 120);
+  return s;
 }
 
 function words(s) { return String(s || '').toLowerCase().split(',').map((x) => x.trim()).filter(Boolean); }
 
 /** Passt der Beitrag zum Filter? Gibt {ok, why} zurück. */
 function matches(post, cfg) {
-  const low = (post.text || '').toLowerCase();
+  const low = fullText(post).toLowerCase();
   const ex = words(cfg.exclude).find((w) => low.includes(w));
   if (ex) return { ok: false, why: `Ausschlusswort „${ex}“` };
   const kws = words(cfg.keywords);
@@ -81,7 +110,7 @@ function matches(post, cfg) {
     const hit = kws.find((k) => k.split(/\s+/).every((w) => low.includes(w)));
     if (!hit) return { ok: false, why: 'kein Stichwort' };
   }
-  const price = dealPrice(post.text);
+  const price = postPrice(post);
   if (cfg.maxPrice != null && price != null && price > cfg.maxPrice) return { ok: false, why: `Preis ${price} € über Höchstpreis` };
   if (!dealLink(post)) return { ok: false, why: 'kein Deal-Link' };
   return { ok: true, why: kws.length ? 'Stichwort passt' : 'alle Deals' };
@@ -183,7 +212,7 @@ async function poll(onDeal) {
         remember('l:' + link);
         if (tkey) remember(tkey);
         found++;
-        await onDeal({ channel: ch, post: p, title: title(p.text), price: dealPrice(p.text), link, resolved, target: tg, action: c.action });
+        await onDeal({ channel: ch, post: p, title: displayName(p, resolved), name: name(p), price: postPrice(p), link, resolved, target: tg, action: c.action });
       }
     } catch (e) {
       errors.push(e.message);
@@ -202,10 +231,10 @@ async function test(n = 5) {
       const mm = matches(p, c);
       let resolved = null;
       if (mm.ok) resolved = await resolve(dealLink(p));
-      out.push({ channel: ch, id: p.id, title: title(p.text), snippet: snippet(p.text), price: dealPrice(p.text), ok: mm.ok, why: mm.why, resolved, target: resolved ? target(resolved) : null });
+      out.push({ channel: ch, id: p.id, title: mm.ok ? displayName(p, resolved) : (name(p) || '(kein Name im Beitrag)'), snippet: snippet(p), price: postPrice(p), ok: mm.ok, why: mm.why, resolved, host: host(resolved), target: resolved ? target(resolved) : null });
     }
   }
   return out;
 }
 
-module.exports = { poll, test, channels, channelName, matches, dealPrice, title, resolve, target, fetchChannel, PARSE_JS };
+module.exports = { poll, test, channels, channelName, matches, dealPrice, title, name, displayName, resolve, target, fetchChannel, PARSE_JS };

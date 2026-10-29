@@ -22,7 +22,14 @@ import kotlin.coroutines.resume
  * Gleiche Regeln wie im Windows-Programm (telegram.js).
  */
 object TelegramDeals {
-    data class Post(val id: Long, val post: String, val text: String, val links: List<String>)
+    /** Beitrag; preview* = Link-Vorschau (Titel/Beschreibung/Seite), dort steht oft der Produktname. */
+    data class Post(
+        val id: Long, val post: String, val text: String, val links: List<String>,
+        val preview: String = "", val previewDesc: String = "", val site: String = "",
+    ) {
+        /** Alles, was zum Filtern zählt: Text + Link-Vorschau. */
+        val fullText: String get() = listOf(text, preview, previewDesc).filter { it.isNotBlank() }.joinToString("\n")
+    }
     data class Target(val shop: String, val id: String, val url: String)
 
     private const val UA =
@@ -72,7 +79,13 @@ object TelegramDeals {
             }
             m.select(".tgme_widget_message_inline_button[href],a.tgme_widget_message_link_preview[href]")
                 .forEach { a -> a.attr("href").takeIf { it.startsWith("http") }?.let { links += it } }
-            out += Post(id, post, text, links)
+            val lp = m.selectFirst(".tgme_widget_message_link_preview")
+            out += Post(
+                id, post, text, links,
+                lp?.selectFirst(".link_preview_title")?.text()?.trim().orEmpty(),
+                lp?.selectFirst(".link_preview_description")?.text()?.trim().orEmpty(),
+                lp?.selectFirst(".link_preview_site_name")?.text()?.trim().orEmpty(),
+            )
         }
         if (out.isEmpty() && doc.selectFirst(".tgme_channel_info") == null) {
             throw IllegalStateException("@$name ist kein öffentlicher Kanal mit Webansicht (Gruppe oder privat?)")
@@ -82,13 +95,15 @@ object TelegramDeals {
 
     /** Erster €-Betrag im Text (bei Deal-Posts meist der Angebotspreis). */
     fun dealPrice(text: String): Double? {
-        val m = PRICE.find(text) ?: return null
-        return Scraper.parsePrice(m.groupValues[1].ifEmpty { m.groupValues[2] })
+        PRICE.find(text)?.let { m -> return Scraper.parsePrice(m.groupValues[1].ifEmpty { m.groupValues[2] }) }
+        // Preis ohne €-Zeichen in einer eigenen Zeile (z. B. „30,99“)
+        val line = text.split('\n').map { it.trim() }.firstOrNull { Regex("^\\d{1,5}[.,]\\d{2}$").matches(it) } ?: return null
+        return Scraper.parsePrice(line)
     }
 
     private val JUNK = Regex(
         "https?://|www\\.|\\.(de|com|deals|net|org)\\b|schnäppchen|preisfehler|angebote:|anzeige|werbung|partnerlink|affiliate|" +
-            "gutschein|coupon|code:|rabattcode|versand|prime|statt\\s",
+            "gutschein|coupon|code:|rabattcode|versand|prime|statt\\s|werbeaktion|blitzangebot|zeitlich begrenzt|aktivieren|kostenlos",
         RegexOption.IGNORE_CASE
     )
 
@@ -100,9 +115,30 @@ object TelegramDeals {
         return (good ?: lines.firstOrNull() ?: "Telegram-Deal").take(100)
     }
 
-    /** Kurzer Textauszug für den Test (Zeilen mit „ / “). */
-    fun snippet(text: String): String =
-        text.split('\n').map { it.trim() }.filter { it.isNotEmpty() }.joinToString(" / ").take(160)
+    /** Brauchbare Textzeile als Name oder null. */
+    private fun goodLine(text: String): String? {
+        val keep = Regex("[^\\p{L}\\p{N}\\s.,:;!?()&%€+\\-–/»«\"'|]")
+        return text.split('\n').map { it.replace(keep, "").trim() }
+            .firstOrNull { l -> l.length > 3 && !JUNK.containsMatchIn(l) && l.count { it.isLetter() } >= 6 }?.take(100)
+    }
+
+    private val SITE_PREFIX = Regex("^[\\w.-]+\\.(de|com|eu|net)\\s*[:|–-]\\s*", RegexOption.IGNORE_CASE)
+
+    /** Produktname aus Link-Vorschau oder Text; null, wenn der Beitrag keinen hat. */
+    fun name(p: Post): String? {
+        val pt = p.preview.replace(SITE_PREFIX, "").trim()
+        if (pt.count { it.isLetter() } >= 6) return pt.take(100)
+        return goodLine(p.text)
+    }
+
+    fun host(url: String?): String? = try { URL(url).host.removePrefix("www.") } catch (e: Exception) { null }
+
+    fun displayName(p: Post, resolved: String?): String = name(p) ?: host(resolved)?.let { "Deal bei $it" } ?: "Telegram-Deal"
+
+    /** Kurzer Textauszug für den Test (Zeilen mit „ / “), plus Link-Vorschau. */
+    fun snippet(p: Post): String =
+        (p.text.split('\n').map { it.trim() }.filter { it.isNotEmpty() }.joinToString(" / ").take(160)) +
+            if (p.preview.isNotBlank() || p.site.isNotBlank()) " / Vorschau: ${p.site}: ${p.preview}".take(120) else ""
 
     private fun words(s: String) = s.lowercase().split(',').map { it.trim() }.filter { it.isNotEmpty() }
 
@@ -113,11 +149,11 @@ object TelegramDeals {
 
     /** Passt der Beitrag zum Filter? (ok, Grund) */
     fun matches(ctx: Context, p: Post): Pair<Boolean, String> {
-        val low = p.text.lowercase()
+        val low = p.fullText.lowercase()
         words(Store.tgExclude(ctx)).firstOrNull { low.contains(it) }?.let { return false to "Ausschlusswort „$it“" }
         val kws = words(Store.tgKeywords(ctx))
         if (kws.isNotEmpty() && kws.none { k -> k.split(Regex("\\s+")).all { low.contains(it) } }) return false to "kein Stichwort"
-        val price = dealPrice(p.text)
+        val price = dealPrice(p.text) ?: dealPrice(p.previewDesc)
         val max = Store.tgMaxPrice(ctx)
         if (max != null && price != null && price > max) return false to "Preis über Höchstpreis"
         if (dealLink(p) == null) return false to "kein Deal-Link"
@@ -242,8 +278,8 @@ object TelegramDeals {
 
     private suspend fun handleDeal(ctx: Context, channel: String, p: Post, link: String, resolved: String) {
         val t = target(resolved)
-        val name = title(p.text)
-        val price = dealPrice(p.text)
+        val name = displayName(p, resolved)
+        val price = dealPrice(p.text) ?: dealPrice(p.previewDesc)
         val action = Store.tgAction(ctx)
         val lines = mutableListOf<String>()
         var addedId: String? = null
@@ -255,8 +291,9 @@ object TelegramDeals {
                     val target = Store.tgMaxPrice(ctx) ?: price
                     Store.add(
                         ctx,
-                        if (t.shop == Product.SHOP_AMAZON) Product(t.id, name.take(80), target, lastAlertPrice = price)
-                        else Product(t.id, name.take(80), target, lastAlertPrice = price, shop = t.shop, url = t.url)
+                        // ohne Namen im Beitrag: ID als Name → die erste Prüfung übernimmt den Produkttitel des Shops
+                        if (t.shop == Product.SHOP_AMAZON) Product(t.id, name(p)?.take(80) ?: t.id, target, lastAlertPrice = price)
+                        else Product(t.id, name(p)?.take(80) ?: t.id, target, lastAlertPrice = price, shop = t.shop, url = t.url)
                     )
                     addedId = t.id
                     lines += "👀 Auf die Überwachungsliste gesetzt" + (target?.let { " (Zielpreis ${money(it)})" } ?: "")
@@ -282,7 +319,7 @@ object TelegramDeals {
             }
         }
         // Fußzeilen des Kanals (nur Links/Domains) weglassen
-        val domainRe = Regex("(https?://)?[\\wäöüß.-]+\\.(de|com|deals|me|org|net|to|eu)(/\\S*)?", RegexOption.IGNORE_CASE)
+        val domainRe = Regex("https?://\\S+|[\\wäöüß.-]+\\.(deals|de|com|me|org|net|to|eu|ly)\\b(/\\S*)?", RegexOption.IGNORE_CASE)
         val body = p.text.split('\n')
             .filter { it.replace(domainRe, "").replace(Regex("[|•·\\-–\\s]"), "").length >= 3 }
             .take(8).joinToString("\n").take(500)
@@ -304,13 +341,16 @@ object TelegramDeals {
             for (p in posts) {
                 val (ok, why) = matches(ctx, p)
                 var tgt = ""
+                var r: String? = null
                 if (ok) {
-                    val r = resolve(ctx, dealLink(p) ?: continue)
+                    r = resolve(ctx, dealLink(p) ?: continue)
                     val t = target(r)
-                    tgt = if (t != null) " → ${if (t.shop == Product.SHOP_AMAZON) "Amazon ${t.id}" else "${t.shop} ${t.id}"}" else " → anderer Shop"
+                    tgt = if (t != null) " → ${if (t.shop == Product.SHOP_AMAZON) "Amazon ${t.id}" else "${t.shop} ${t.id}"}"
+                    else " → anderer Shop (${host(r) ?: "?"})"
                 }
-                val price = dealPrice(p.text)?.let { " – ${money(it)}" } ?: ""
-                out += (if (ok) "✅ " else "⏭️ ") + "@$ch #${p.id}: ${title(p.text)}$price\n   ($why$tgt)\n   Text: ${snippet(p.text)}"
+                val price = (dealPrice(p.text) ?: dealPrice(p.previewDesc))?.let { " – ${money(it)}" } ?: ""
+                val nm = if (ok) displayName(p, r) else name(p) ?: "(kein Name im Beitrag)"
+                out += (if (ok) "✅ " else "⏭️ ") + "@$ch #${p.id}: $nm$price\n   ($why$tgt)\n   Text: ${snippet(p)}"
             }
         }
         return out
