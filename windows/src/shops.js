@@ -24,7 +24,7 @@ const SHOPS = [
     keepParams: [],
   },
   {
-    key: 'mediamarkt', label: 'MediaMarkt', emoji: '🔴',
+    key: 'mediamarkt', label: 'MediaMarkt', emoji: '🔵',
     base: 'https://www.mediamarkt.de',
     cartUrl: 'https://www.mediamarkt.de/checkout',
     accountUrl: 'https://www.mediamarkt.de/de/myaccount',

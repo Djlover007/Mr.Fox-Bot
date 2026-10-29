@@ -91,7 +91,7 @@ object WebShops {
     )
 
     val MEDIAMARKT = WebShop(
-        key = Product.SHOP_MEDIAMARKT, label = "MediaMarkt", emoji = "🔴",
+        key = Product.SHOP_MEDIAMARKT, label = "MediaMarkt", emoji = "🔵",
         base = "https://www.mediamarkt.de",
         cartUrl = "https://www.mediamarkt.de/checkout",
         accountUrl = "https://www.mediamarkt.de/de/myaccount",
