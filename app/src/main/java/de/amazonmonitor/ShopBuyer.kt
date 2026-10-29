@@ -81,14 +81,22 @@ return 'none';})()"""
     private val PAYMENT_CHANGE_JS = "(function(){" + C + """
 var head=/^(zahlungsart|zahlungsmethode|bezahlart|bezahlmethode|zahlung|zahlungsweise|deine zahlungsart|ihre zahlungsart)\s*:?$/i;
 var chg=/^(ändern|bearbeiten|auswählen|zahlungsart ändern|zahlungsart auswählen|andere zahlungsart( wählen)?)$/i;
+var other=/lieferadresse|lieferservice|rechnungsadresse|rechnungsanschrift/i;
+function isEdit(b){var t=txt(b);if(t&&chg.test(t))return true;
+ var al=((b.getAttribute('aria-label')||'')+' '+(b.getAttribute('title')||'')+' '+(b.getAttribute('class')||'')+' '+(b.getAttribute('data-testid')||''));
+ if(/bearbeit|ändern|edit|pencil|stift/i.test(al))return true;
+ if(!t&&(b.tagName==='BUTTON'||b.tagName==='A'||b.getAttribute('role')==='button')&&b.querySelector('svg,img'))return true;
+ return false;}
+function fire(b){if(typeof b.click==='function')b.click();else b.dispatchEvent(new MouseEvent('click',{bubbles:true}));}
 var els=document.querySelectorAll('h1,h2,h3,h4,h5,legend,dt,span,div,p,strong,b,label');
 for(var i=0;i<els.length;i++){var e=els[i];var t=txt(e);if(!t||t.length>30||!head.test(t))continue;
  var box=e.parentElement;
  for(var up=0;up<6&&box;up++){var bt=(box.innerText||'').replace(/\s+/g,' ');
   if(bt.length>600)break;
   if(/paypal/i.test(bt)&&!/paypal (express|checkout)/i.test(bt))return 'paypal';
-  var bs=box.querySelectorAll('button,a,[role=button]');
-  for(var j=0;j<bs.length;j++){if(chg.test(txt(bs[j]))&&vis(bs[j])){bs[j].click();return 'clicked';}}
+  if(other.test(bt))break; // nicht in den Abschnitt Lieferadresse o. Ä. geraten
+  var bs=box.querySelectorAll('button,a,[role=button],[aria-label],[title],svg,img,[class*="edit" i],[class*="pencil" i]');
+  for(var j=0;j<bs.length;j++){if(isEdit(bs[j])&&vis(bs[j])){fire(bs[j]);return 'clicked';}}
   box=box.parentElement;}
  var pt=(e.parentElement&&e.parentElement.parentElement&&e.parentElement.parentElement.innerText||'').replace(/\s+/g,' ').trim().slice(0,80);
  return 'none:'+pt;}
@@ -139,7 +147,17 @@ function roots(){var d=dlg();return d?[d,document]:[document];}
     private val FINAL_RE = "/zahlungspflichtig bestellen|kostenpflichtig bestellen|zahlungspflichtig kaufen|jetzt kaufen|^kaufen${'$'}|kaufen und bezahlen|bestellung absenden|jetzt bestellen/i"
     private val NEXT_RE = "/^(weiter|weiter zu.*|weiter zur .*|zur zahlung|zur bestellübersicht|zur übersicht|bestellung prüfen|übernehmen|speichern und weiter|auswählen und weiter|bestätigen|fortfahren|speichern|auswahl speichern|zahlungsart übernehmen|zahlungsart speichern)${'$'}/i"
 
-    private fun stepJs(exhausted: Collection<String>) = "(function(){" + C + AutoBuyer.FIND_TOTAL_JS + PICK_JS +
+    /** Text des Zahlungs-Abschnitts (z. B. „Zahlungsart Ratenzahlung in 48 Monatsraten …“). */
+    private const val PAY_SECTION_JS = """
+function paySec(){var head=/^(zahlungsart|zahlungsmethode|bezahlart|bezahlmethode|zahlung|zahlungsweise)\s*:?$/i;
+ var els=document.querySelectorAll('h1,h2,h3,h4,h5,legend,dt,span,div,p,strong,b,label');
+ for(var i=0;i<els.length;i++){var e=els[i];var t=txt(e);if(!t||t.length>30||!head.test(t))continue;
+  var box=e.parentElement;for(var up=0;up<5&&box;up++){var bt=(box.innerText||'').replace(/\s+/g,' ').trim();
+   if(bt.length>t.length+8)return bt.slice(0,160);box=box.parentElement;}}
+ return '';}
+"""
+
+    private fun stepJs(exhausted: Collection<String>) = "(function(){" + C + AutoBuyer.FIND_TOTAL_JS + PICK_JS + PAY_SECTION_JS +
         "var EX=${org.json.JSONArray(exhausted)};" +
         "if(security())return JSON.stringify({s:'security'});" +
         "var body=(document.body&&document.body.innerText)||'';var h=location.href.toLowerCase();" +
@@ -147,7 +165,7 @@ function roots(){var d=dlg();return d?[d,document]:[document];}
         "var rs=roots();" +
         "for(var q=0;q<rs.length;q++){var R=rs[q];" +
         " var f=pickIn(R,$FINAL_RE,/einkaufen/i);" +
-        " if(f)return JSON.stringify({s:'final',total:findTotal(document)||'',label:txt(f),hint:hintOf(document)});" +
+        " if(f)return JSON.stringify({s:'final',total:findTotal(document)||'',label:txt(f),hint:hintOf(document),pay:paySec()});" +
         " if(q===0&&R!==document){var n0=pickIn(R,$NEXT_RE,/einkaufen|shoppen/i);if(n0)return JSON.stringify({s:'click',label:txt(n0)});}" +
         "}" +
         "if(/vielen dank für (ihre|deine) bestellung|(ihre|deine) bestellnummer|bestellung ist eingegangen/i.test(body)" +
@@ -452,6 +470,16 @@ function roots(){var d=dlg();return d?[d,document]:[document];}
                             "final" -> {
                                 val t = Scraper.parsePrice(o.optString("total"))
                                 val label = o.optString("label")
+                                // Sperre: nie mit Ratenzahlung/Finanzierung (Kredit) bestellen
+                                val paySec = o.optString("pay")
+                                if (Regex("(?i)ratenzahlung|monatsrate|finanzierung|ratenkauf|in \\d+ raten").containsMatchIn(paySec) &&
+                                    !paySec.contains("paypal", ignoreCase = true)
+                                ) {
+                                    done(AutoBuyer.Result(AutoBuyer.Outcome.ABORTED,
+                                        "Zahlungsart ist Ratenzahlung/Finanzierung („${paySec.take(70)}“) – aus Sicherheit nicht bestellt. " +
+                                            "Bitte im ${shop.label}-Konto PayPal oder eine andere Standard-Zahlungsart einstellen.", t))
+                                    return@evaluateJavascript
+                                }
                                 if (mode == Mode.DRY) {
                                     val info = if (t != null) "Gesamtbetrag ${money(t)}" else
                                         "Gesamtbetrag nicht lesbar" + o.optString("hint").let { if (it.isNotEmpty()) " (gefunden: $it)" else "" }

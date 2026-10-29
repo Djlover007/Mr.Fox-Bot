@@ -54,6 +54,8 @@ wieder verfügbar).
   wenn angeboten, und drückt nach der Weiterleitung bei PayPal „Jetzt zahlen“. Dafür einmal
   „Bei PayPal anmelden (App)“ mit „Eingeloggt bleiben“ (2FA selbst bestätigen). Das Passwort wird nicht
   gespeichert. Verlangt PayPal eine Anmeldung, meldet die App „unklar“ – dann Bestellung prüfen.
+- **Nie mit Ratenzahlung:** Steht als Zahlungsart Ratenzahlung/Finanzierung (und PayPal ließ sich nicht wählen),
+  bestellt der Auto-Kauf nicht und meldet das.
 - Zusatzangebote wie Geräteschutz/Garantie/Versicherung lehnt der Auto-Kauf immer ab („Ich möchte mein
   Gerät nicht schützen“, „Nein, danke“); lässt sich die Ablehnung nicht sicher auswählen, bricht er ab.
 - Die Müller-Knöpfe werden über ihre Beschriftung gefunden. Ändert Müller Texte oder Ablauf (oder
