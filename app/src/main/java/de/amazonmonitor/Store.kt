@@ -279,6 +279,13 @@ object Store {
             .apply()
     }
 
+    /** Zahlungsart PayPal wählen, wenn ein Shop sie anbietet (Müller, MediaMarkt, BAUR). */
+    fun preferPaypal(c: Context): Boolean = prefs(c).getBoolean("prefer_paypal", true)
+
+    fun savePreferPaypal(c: Context, on: Boolean) {
+        prefs(c).edit().putBoolean("prefer_paypal", on).apply()
+    }
+
     /** Einkäufe bei diesem Shop über PAYBACK starten (°Punkte). */
     fun payback(c: Context, shopKey: String): Boolean = prefs(c).getBoolean("payback_$shopKey", false)
 

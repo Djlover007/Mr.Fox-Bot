@@ -50,6 +50,10 @@ wieder verfügbar).
   gespeicherten **Müller-Zugang** → „Weiter“-Schritte mit den Voreinstellungen deines Kontos →
   „Zahlungspflichtig bestellen“. Achtung: Dabei wird der **ganze Müller-Warenkorb** bestellt.
   Erst den Probelauf testen (am besten mit „sichtbarem Fenster“), er hält vor dem Bestellknopf an.
+- **PayPal:** Mit „Zahlung: immer PayPal wählen“ (Standard: an) wählt der Auto-Kauf in der Kasse PayPal,
+  wenn angeboten, und drückt nach der Weiterleitung bei PayPal „Jetzt zahlen“. Dafür einmal
+  „Bei PayPal anmelden (App)“ mit „Eingeloggt bleiben“ (2FA selbst bestätigen). Das Passwort wird nicht
+  gespeichert. Verlangt PayPal eine Anmeldung, meldet die App „unklar“ – dann Bestellung prüfen.
 - Zusatzangebote wie Geräteschutz/Garantie/Versicherung lehnt der Auto-Kauf immer ab („Ich möchte mein
   Gerät nicht schützen“, „Nein, danke“); lässt sich die Ablehnung nicht sicher auswählen, bricht er ab.
 - Die Müller-Knöpfe werden über ihre Beschriftung gefunden. Ändert Müller Texte oder Ablauf (oder

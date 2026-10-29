@@ -276,6 +276,14 @@ class MainActivity : AppCompatActivity() {
             isChecked = Store.autoBuyEnabled(this@MainActivity)
         }
         root.addView(cbBuy)
+        root.addView(CheckBox(this).apply {
+            text = "Zahlung: immer PayPal wählen, wenn angeboten (Müller, MediaMarkt, BAUR – Amazon bietet kein PayPal)"
+            isChecked = Store.preferPaypal(this@MainActivity)
+            setOnCheckedChangeListener { _, on -> Store.savePreferPaypal(this@MainActivity, on) }
+        })
+        root.addView(button("Bei PayPal anmelden (App, „Eingeloggt bleiben“ anhaken)") {
+            startActivity(Links.inApp(this, "https://www.paypal.com/signin"))
+        }.apply { textSize = 12f })
 
         // --- Fenster
         root.addView(label("Fenster"))

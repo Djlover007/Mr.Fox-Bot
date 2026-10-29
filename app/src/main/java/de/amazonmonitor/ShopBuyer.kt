@@ -49,6 +49,37 @@ object ShopBuyer {
      * Ergebnis: 'none' (kein Angebot), 'already' (Ablehnung ist ausgewählt), 'clicked' (Auswahl),
      * 'btn' („Nein, danke“-Knopf gedrückt).
      */
+    /**
+     * Zahlungsart PayPal auswählen, wenn angeboten. Nur Auswahlfelder (Radio) – nie einen
+     * „PayPal-Express“-Knopf. Ergebnis: 'none' (kein PayPal), 'already' (ist gewählt), 'clicked'.
+     */
+    private val PAYPAL_SELECT_JS = "(function(){" + C + """
+var re=/paypal/i;
+function lab(e){return e.tagName==='IMG'?(e.alt||''):txt(e);}
+function radios(el){return el.querySelectorAll('input[type=radio],[role=radio]');}
+var els=document.querySelectorAll('label,[role=radio],span,div,p,strong,img[alt]');
+for(var i=0;i<els.length;i++){var e=els[i];if(e.children&&e.children.length>4)continue;var t=lab(e);
+ if(!t||t.length>40||!re.test(t))continue;
+ var deeper=false;if(e.children){for(var c=0;c<e.children.length;c++){if(re.test(lab(e.children[c]))){deeper=true;break;}}}
+ if(deeper)continue;
+ var r=null;var box=e;for(var up=0;up<6&&box;up++){
+  if(box.matches&&box.matches('input[type=radio],[role=radio]')){r=box;break;}
+  var rs=radios(box);if(rs.length===1){r=rs[0];break;}if(rs.length>1)break;box=box.parentElement;}
+ if(!r)continue;
+ if(r.checked||r.getAttribute('aria-checked')==='true')return 'already';
+ if(!vis(e)&&!vis(r))continue;
+ r.click();return 'clicked';}
+return 'none';})()"""
+
+    /** Auf der PayPal-Seite: Anmeldung nötig? Sonst „Jetzt zahlen“ / „Zustimmen und weiter“ drücken. */
+    private val PAYPAL_PAY_JS = "(function(){" + C + """
+var pw=document.querySelector('input[type=password]');
+var em=document.querySelector('#email,input[name=login_email],input[type=email]');
+var b=btn(/^(jetzt zahlen|zahlung abschließen|zustimmen und weiter|zustimmen und zahlen|weiter zur überprüfung|weiter|jetzt kaufen|kaufen|pay now|continue|complete purchase|agree (&|and) continue)$/i);
+if(!b&&((pw&&vis(pw))||(em&&vis(em))))return 'login';
+if(b){b.click();return 'clicked:'+txt(b);}
+return 'wait';})()"""
+
     private val DECLINE_JS = "(function(){" + C + """
 var re=/ich möchte (mein gerät|meine geräte|das gerät|den artikel) nicht (schützen|absichern|versichern)|ohne (geräte)?schutz|keinen? (geräte)?schutz|keine (garantie|versicherung|absicherung|garantieverlängerung)|ohne (garantie|versicherung|absicherung)|nicht absichern|nein,? danke/i;
 function radios(el){return el.querySelectorAll('input[type=radio],[role=radio]');}
@@ -179,6 +210,9 @@ function roots(){var d=dlg();return d?[d,document]:[document];}
         var declineClicks = 0
         val exhausted = mutableSetOf<String>()
         var declineButtons = 0
+        var paypalClicks = 0
+        var paypalState = "" // "", "gewählt", "nicht angeboten"
+        var paypalPays = 0
 
         fun release() {
             handler.removeCallbacksAndMessages(null)
@@ -300,6 +334,24 @@ function roots(){var d=dlg();return d?[d,document]:[document];}
                             again()
                             return@evaluateJavascript
                         }
+                        // Zahlungsart PayPal bevorzugen (wenn eingeschaltet und angeboten)
+                        if (stage == 3 && Store.preferPaypal(ctx) && paypalClicks < 3) {
+                            web.evaluateJavascript(PAYPAL_SELECT_JS) { pp ->
+                                if (!cont.isActive) return@evaluateJavascript
+                                when {
+                                    pp?.contains("clicked") == true -> {
+                                        paypalClicks++
+                                        status("Wähle Zahlungsart PayPal …")
+                                        again()
+                                    }
+                                    else -> {
+                                        if (pp?.contains("already") == true) paypalState = "gewählt"
+                                        stepPoll()
+                                    }
+                                }
+                            }
+                            return@evaluateJavascript
+                        }
                         stepPoll()
                     }
                 }
@@ -312,6 +364,27 @@ function roots(){var d=dlg();return d?[d,document]:[document];}
                         val o = WebShops.parseJs(raw)
                         val s = o.optString("s")
                         if (stage == 4) {
+                            // Weiterleitung zu PayPal: „Jetzt zahlen“ drücken
+                            val host = android.net.Uri.parse(web.url ?: "").host ?: ""
+                            if (host.contains("paypal.")) {
+                                web.evaluateJavascript(PAYPAL_PAY_JS) { r ->
+                                    if (!cont.isActive) return@evaluateJavascript
+                                    val v = r?.trim('"') ?: ""
+                                    when {
+                                        v == "login" -> {
+                                            done(AutoBuyer.Result(AutoBuyer.Outcome.UNCLEAR, "PayPal verlangt eine Anmeldung – einmal „Bei PayPal anmelden (App)“; Bestellung evtl. offen, bitte prüfen", total))
+                                            return@evaluateJavascript
+                                        }
+                                        v.startsWith("clicked") && paypalPays < 6 -> {
+                                            paypalPays++
+                                            polls = 0
+                                            status("PayPal: „${v.removePrefix("clicked:")}“ …")
+                                        }
+                                    }
+                                    again()
+                                }
+                                return@evaluateJavascript
+                            }
                             when {
                                 s == "done" -> {
                                     done(AutoBuyer.Result(AutoBuyer.Outcome.ORDERED, "Bestellung bei ${shop.label} bestätigt", total))
@@ -337,7 +410,12 @@ function roots(){var d=dlg();return d?[d,document]:[document];}
                                 if (mode == Mode.DRY) {
                                     val info = if (t != null) "Gesamtbetrag ${money(t)}" else
                                         "Gesamtbetrag nicht lesbar" + o.optString("hint").let { if (it.isNotEmpty()) " (gefunden: $it)" else "" }
-                                    done(AutoBuyer.Result(AutoBuyer.Outcome.DRY_RUN_OK, "Bestellknopf „$label“ gefunden, $info – Probelauf, nichts bestellt", t))
+                                    val pay = when {
+                                        !Store.preferPaypal(ctx) -> ""
+                                        paypalState == "gewählt" || paypalClicks > 0 -> ", Zahlung: PayPal ✅"
+                                        else -> ", Zahlung: PayPal nicht angeboten (Standard-Zahlungsart)"
+                                    }
+                                    done(AutoBuyer.Result(AutoBuyer.Outcome.DRY_RUN_OK, "Bestellknopf „$label“ gefunden, $info$pay – Probelauf, nichts bestellt", t))
                                     return@evaluateJavascript
                                 }
                                 total = t

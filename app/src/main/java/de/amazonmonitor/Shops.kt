@@ -149,6 +149,9 @@ object WebShops {
     fun setup(@Suppress("UNUSED_PARAMETER") ctx: Context, web: WebView) {
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
+        // Pop-ups (z. B. PayPal) im selben Fenster öffnen
+        web.settings.javaScriptCanOpenWindowsAutomatically = true
+        web.settings.setSupportMultipleWindows(false)
         web.settings.userAgentString = null // = Standard-Kennung des Android-Browsers
         // Bot-Prüfungen (Cloudflare Turnstile) laufen in einem eingebetteten Fenster und brauchen Cookies.
         android.webkit.CookieManager.getInstance().setAcceptCookie(true)
