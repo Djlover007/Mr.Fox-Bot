@@ -151,6 +151,11 @@ function roots(){var d=dlg();return d?[d,document]:[document];}
 
     /** Text des Zahlungs-Abschnitts (z. B. „Zahlungsart Ratenzahlung in 48 Monatsraten …“). */
     private const val PAY_SECTION_JS = """
+function maxQty(){var b=(document.body&&document.body.innerText)||'';var re=/(anzahl|menge|stückzahl)\s*:?\s*(\d+)/gi;var m,mx=0;
+ while((m=re.exec(b))!==null){var n=parseInt(m[2],10);if(n>mx&&n<100)mx=n;}
+ var sels=document.querySelectorAll('select[name*=qty i],select[name*=quant i],select[name*=menge i],input[name*=qty i],input[name*=quant i]');
+ for(var i=0;i<sels.length;i++){var n2=parseInt(sels[i].value,10);if(n2>mx&&n2<100)mx=n2;}
+ return mx;}
 function paySec(){var head=/^(zahlungsart|zahlungsmethode|bezahlart|bezahlmethode|zahlung|zahlungsweise)\s*:?$/i;
  var els=document.querySelectorAll('h1,h2,h3,h4,h5,legend,dt,span,div,p,strong,b,label');
  for(var i=0;i<els.length;i++){var e=els[i];var t=txt(e);if(!t||t.length>30||!head.test(t))continue;
@@ -167,7 +172,7 @@ function paySec(){var head=/^(zahlungsart|zahlungsmethode|bezahlart|bezahlmethod
         "var rs=roots();" +
         "for(var q=0;q<rs.length;q++){var R=rs[q];" +
         " var f=pickIn(R,$FINAL_RE,/einkaufen/i);" +
-        " if(f)return JSON.stringify({s:'final',total:findTotal(document)||'',label:txt(f),hint:hintOf(document),pay:paySec()});" +
+        " if(f)return JSON.stringify({s:'final',total:findTotal(document)||'',label:txt(f),hint:hintOf(document),pay:paySec(),qty:maxQty()});" +
         " if(q===0&&R!==document){var n0=pickIn(R,$NEXT_RE,/einkaufen|shoppen/i);if(n0)return JSON.stringify({s:'click',label:txt(n0)});}" +
         "}" +
         "if(/vielen dank für (ihre|deine) bestellung|(ihre|deine) bestellnummer|bestellung ist eingegangen/i.test(body)" +
@@ -338,6 +343,28 @@ function paySec(){var head=/^(zahlungsart|zahlungsmethode|bezahlart|bezahlmethod
                         }
                     }
 
+                    // 9 = vorab im Warenkorb nachsehen: Liegt der Artikel schon drin, nicht noch einmal hinzufügen
+                    9 -> web.evaluateJavascript(cartHasJs(article)) { raw ->
+                        if (!cont.isActive) return@evaluateJavascript
+                        val v = raw?.trim('"') ?: ""
+                        when {
+                            v == "yes" -> {
+                                if (mode == Mode.CART) {
+                                    done(AutoBuyer.Result(AutoBuyer.Outcome.DRY_RUN_OK, "Liegt schon im ${shop.label}-Warenkorb"))
+                                    return@evaluateJavascript
+                                }
+                                status("Artikel liegt schon im Warenkorb – nicht noch einmal hinzufügen …")
+                                nextStage(2)
+                            }
+                            (v == "no" && polls >= 3) || polls >= 10 -> {
+                                status("Lade Produktseite …")
+                                web.loadUrl(url)
+                                nextStage(0)
+                            }
+                        }
+                        again()
+                    }
+
                     2 -> web.evaluateJavascript(cartHasJs(article)) { raw ->
                         if (!cont.isActive) return@evaluateJavascript
                         val yes = raw?.contains("yes") == true
@@ -493,6 +520,14 @@ function paySec(){var head=/^(zahlungsart|zahlungsmethode|bezahlart|bezahlmethod
                             "final" -> {
                                 val t = Scraper.parsePrice(o.optString("total"))
                                 val label = o.optString("label")
+                                // Sperre: nie mehr als 1 Stück bestellen (z. B. durch frühere Probeläufe im Warenkorb)
+                                val qty = o.optInt("qty", 0)
+                                if (qty > 1) {
+                                    done(AutoBuyer.Result(AutoBuyer.Outcome.ABORTED,
+                                        "Im ${shop.label}-Warenkorb liegen $qty Stück – aus Sicherheit nicht bestellt. " +
+                                            "Bitte den Warenkorb auf 1 Stück reduzieren.", t))
+                                    return@evaluateJavascript
+                                }
                                 // Sperre: nie mit Ratenzahlung/Finanzierung (Kredit) bestellen
                                 val paySec = o.optString("pay")
                                 if (Regex("(?i)ratenzahlung|monatsrate|finanzierung|ratenkauf|in \\d+ raten").containsMatchIn(paySec) &&
@@ -500,7 +535,9 @@ function paySec(){var head=/^(zahlungsart|zahlungsmethode|bezahlart|bezahlmethod
                                 ) {
                                     done(AutoBuyer.Result(AutoBuyer.Outcome.ABORTED,
                                         "Zahlungsart ist Ratenzahlung/Finanzierung („${paySec.take(70)}“) – aus Sicherheit nicht bestellt. " +
-                                            "Bitte im ${shop.label}-Konto PayPal oder eine andere Standard-Zahlungsart einstellen.", t))
+                                            "Bitte im ${shop.label}-Konto PayPal oder eine andere Standard-Zahlungsart einstellen." +
+                                            (if (paymentOptions.isNotEmpty()) "\nGesehene Zahlungsarten: $paymentOptions" else "\nKeine Zahlungsarten-Auswahl gesehen") +
+                                            " (Stift geklickt: ${paymentChanges}x, PayPal-Klicks: ${paypalClicks}x)", t))
                                     return@evaluateJavascript
                                 }
                                 if (mode == Mode.DRY) {
@@ -562,7 +599,9 @@ function paySec(){var head=/^(zahlungsart|zahlungsmethode|bezahlart|bezahlmethod
                         }
                         if (s == "wait" || s == "security") last = o.optString("title", s)
                         if (polls >= 60) {
-                            done(AutoBuyer.Result(AutoBuyer.Outcome.FAILED, "${shop.label}-Kasse nicht durchlaufen (hängt bei: ${last.ifEmpty { s }})"))
+                            done(AutoBuyer.Result(AutoBuyer.Outcome.FAILED, "${shop.label}-Kasse nicht durchlaufen (hängt bei: ${last.ifEmpty { s }})" +
+                                (if (paymentOptions.isNotEmpty()) "\nGesehene Zahlungsarten: $paymentOptions" else "") +
+                                (if (exhausted.isNotEmpty()) "\nOhne Wirkung geklickt: ${exhausted.joinToString()}" else "")))
                             return@evaluateJavascript
                         }
                         again()
@@ -570,9 +609,10 @@ function paySec(){var head=/^(zahlungsart|zahlungsmethode|bezahlart|bezahlmethod
                 }
             }
 
-        status("Lade Produktseite …")
+        status("Schaue in den Warenkorb …")
         web.webViewClient = WebShops.safeClient()
-        web.loadUrl(url)
+        stage = 9
+        web.loadUrl(shop.cartUrl)
         handler.postDelayed(tick, 2500)
     }
 }
