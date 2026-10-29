@@ -56,9 +56,17 @@ function dealPrice(text) {
   return Scraper.parsePrice(m[1] || m[2]);
 }
 
+const JUNK = /https?:\/\/|www\.|\.(de|com|deals|net|org)\b|schnäppchen|preisfehler|angebote:|anzeige|werbung|partnerlink|affiliate|gutschein|coupon|code:|rabattcode|versand|prime|statt\s/i;
+
+/** Produktname: erste Zeile mit genug Buchstaben, ohne Links, Werbe-Kopfzeile, Preis- oder Gutscheinzeile. */
 function title(text) {
   const lines = String(text || '').split('\n').map((l) => l.replace(/[^\p{L}\p{N}\s.,:;!?()&%€+\-–/»«"'|]/gu, '').trim()).filter((l) => l.length > 3);
-  return (lines[0] || 'Telegram-Deal').slice(0, 100);
+  const good = lines.find((l) => !JUNK.test(l) && (l.match(/\p{L}/gu) || []).length >= 6);
+  return (good || lines[0] || 'Telegram-Deal').slice(0, 100);
+}
+
+function snippet(text) {
+  return String(text || '').split('\n').map((l) => l.trim()).filter(Boolean).join(' / ').slice(0, 160);
 }
 
 function words(s) { return String(s || '').toLowerCase().split(',').map((x) => x.trim()).filter(Boolean); }
@@ -194,7 +202,7 @@ async function test(n = 5) {
       const mm = matches(p, c);
       let resolved = null;
       if (mm.ok) resolved = await resolve(dealLink(p));
-      out.push({ channel: ch, id: p.id, title: title(p.text), price: dealPrice(p.text), ok: mm.ok, why: mm.why, resolved, target: resolved ? target(resolved) : null });
+      out.push({ channel: ch, id: p.id, title: title(p.text), snippet: snippet(p.text), price: dealPrice(p.text), ok: mm.ok, why: mm.why, resolved, target: resolved ? target(resolved) : null });
     }
   }
   return out;

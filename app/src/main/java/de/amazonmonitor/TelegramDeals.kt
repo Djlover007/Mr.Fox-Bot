@@ -86,10 +86,23 @@ object TelegramDeals {
         return Scraper.parsePrice(m.groupValues[1].ifEmpty { m.groupValues[2] })
     }
 
+    private val JUNK = Regex(
+        "https?://|www\\.|\\.(de|com|deals|net|org)\\b|schnäppchen|preisfehler|angebote:|anzeige|werbung|partnerlink|affiliate|" +
+            "gutschein|coupon|code:|rabattcode|versand|prime|statt\\s",
+        RegexOption.IGNORE_CASE
+    )
+
+    /** Produktname: erste Zeile mit genug Buchstaben, ohne Links, Werbe-Kopfzeile, Preis- oder Gutscheinzeile. */
     fun title(text: String): String {
         val keep = Regex("[^\\p{L}\\p{N}\\s.,:;!?()&%€+\\-–/»«\"'|]")
-        return text.split('\n').map { it.replace(keep, "").trim() }.firstOrNull { it.length > 3 }?.take(100) ?: "Telegram-Deal"
+        val lines = text.split('\n').map { it.replace(keep, "").trim() }.filter { it.length > 3 }
+        val good = lines.firstOrNull { l -> !JUNK.containsMatchIn(l) && l.count { it.isLetter() } >= 6 }
+        return (good ?: lines.firstOrNull() ?: "Telegram-Deal").take(100)
     }
+
+    /** Kurzer Textauszug für den Test (Zeilen mit „ / “). */
+    fun snippet(text: String): String =
+        text.split('\n').map { it.trim() }.filter { it.isNotEmpty() }.joinToString(" / ").take(160)
 
     private fun words(s: String) = s.lowercase().split(',').map { it.trim() }.filter { it.isNotEmpty() }
 
@@ -297,7 +310,7 @@ object TelegramDeals {
                     tgt = if (t != null) " → ${if (t.shop == Product.SHOP_AMAZON) "Amazon ${t.id}" else "${t.shop} ${t.id}"}" else " → anderer Shop"
                 }
                 val price = dealPrice(p.text)?.let { " – ${money(it)}" } ?: ""
-                out += (if (ok) "✅ " else "⏭️ ") + "@$ch #${p.id}: ${title(p.text)}$price\n   ($why$tgt)"
+                out += (if (ok) "✅ " else "⏭️ ") + "@$ch #${p.id}: ${title(p.text)}$price\n   ($why$tgt)\n   Text: ${snippet(p.text)}"
             }
         }
         return out

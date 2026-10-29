@@ -393,7 +393,7 @@ $('tgTest').addEventListener('click', async () => {
   for (const it of r.items) {
     const tg = it.target ? (it.target.shop === 'amazon' ? 'Amazon ' + it.target.asin : it.target.shop + ' ' + it.target.id) : (it.resolved ? 'anderer Shop' : '');
     box.append(el('div', { class: 'catitem' },
-      el('span', {}, (it.ok ? '✅ ' : '⏭️ ') + `@${it.channel} #${it.id}: ${it.title}` + (it.price != null ? ' – ' + money(it.price) : '') + `\n(${it.why}${tg ? ' → ' + tg : ''})`),
+      el('span', {}, (it.ok ? '✅ ' : '⏭️ ') + `@${it.channel} #${it.id}: ${it.title}` + (it.price != null ? ' – ' + money(it.price) : '') + `\n(${it.why}${tg ? ' → ' + tg : ''})\nText: ${it.snippet || ''}`),
       it.resolved ? el('button', { onclick: () => call('open', it.resolved) }, 'Öffnen') : el('span')));
   }
   return modal('Telegram-Test: letzte Beiträge', box, [['Schließen', true]]);
