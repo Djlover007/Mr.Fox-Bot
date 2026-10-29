@@ -69,7 +69,7 @@ class WatchActivity : AppCompatActivity() {
                 raw ?: "leer"
             }
             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-            cm.setPrimaryClip(android.content.ClipData.newPlainText("Seitenbericht", "Mr.Fox Seitenbericht\n" + text))
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("Seitenbericht", "Mr.Fox Seitenbericht (" + (try { packageManager.getPackageInfo(packageName, 0).versionName } catch (e: Exception) { "?" }) + ")\n" + text + "\n--- Ablauf der App\n" + ShopBuyer.logText()))
             android.widget.Toast.makeText(this, "Seitenbericht kopiert – im Chat einfügen.", android.widget.Toast.LENGTH_LONG).show()
         }
     }

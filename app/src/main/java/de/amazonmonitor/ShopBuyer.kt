@@ -23,6 +23,17 @@ import kotlin.coroutines.resume
  * Die Knöpfe werden über ihre Beschriftung gefunden, weil die Shops keine festen Kennungen anbieten.
  */
 object ShopBuyer {
+    /** Ablaufprotokoll des letzten Laufs (für den Seitenbericht im Fenster). */
+    private val logLines = ArrayList<String>()
+    private val logFmt = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.GERMANY)
+
+    fun log(s: String) = synchronized(logLines) {
+        logLines.add(logFmt.format(java.util.Date()) + " " + s.take(160))
+        if (logLines.size > 60) logLines.removeAt(0)
+    }
+
+    fun logText(): String = synchronized(logLines) { logLines.joinToString("\n") }
+
     private enum class Mode { CART, BUY, DRY }
 
     private val mutex = Mutex()
@@ -66,7 +77,18 @@ var rs=document.querySelectorAll('input[type=radio],[role=radio]');
 var pp=null,list=[];
 for(var i=0;i<rs.length;i++){var r=rs[i];var t=radioText(r);list.push((on(r)?'[x] ':'[ ] ')+t.slice(0,25));
  if(!pp&&/paypal/i.test(t)&&!/express/i.test(t))pp=r;}
-if(!pp)return 'none|'+list.join(' · ');
+if(!pp){
+ // Kein Auswahlfeld: PayPal als anklickbare Kachel (z. B. BAUR). Nie Links in Kopf-/Fußzeile, nie „Express“.
+ var cand=document.querySelectorAll('button,[role=button],[role=option],[role=tab],li,label,div,span');var best=null,bl=1e9;
+ for(var k=0;k<cand.length;k++){var c=cand[k];if(c.closest('footer,header,nav'))continue;var a=c.closest('a[href]');
+  if(a&&!/^(#|javascript:)/i.test(a.getAttribute('href')||''))continue;
+  var ct=(txt(c)+' '+[].map.call(c.querySelectorAll('img[alt]'),function(i){return i.alt;}).join(' ')).replace(/\s+/g,' ').trim();
+  if(!/paypal/i.test(ct)||/express|ratenzahlung|später bezahlen|pay later/i.test(ct)||ct.length>80||!vis(c))continue;
+  var clk=c.tagName==='BUTTON'||c.tagName==='LABEL'||/^(button|option|tab)$/.test(c.getAttribute('role')||'')||getComputedStyle(c).cursor==='pointer';
+  if(clk&&ct.length<bl){best=c;bl=ct.length;}}
+ if(best){var sel=function(e){for(var u=0;u<4&&e;u++){if(e.getAttribute('aria-checked')==='true'||e.getAttribute('aria-selected')==='true'||e.getAttribute('aria-pressed')==='true'||/(^|[-_ ])(selected|active|checked)/i.test(e.getAttribute('class')||''))return true;e=e.parentElement;}return false;};
+  if(sel(best))return 'already';best.click();return 'clicked-tile:'+txt(best).slice(0,30);}
+ return 'none|'+list.join(' · ');}
 if(on(pp))return 'already';
 // wie ein Finger: zuerst die Beschriftung antippen, sonst das Feld selbst
 var l=(pp.id&&document.querySelector('label[for="'+pp.id+'"]'))||pp.closest('label');
@@ -91,7 +113,15 @@ function isEdit(b){var t=txt(b);if(t&&chg.test(t))return true;
  // anklickbare Grafik ohne Text (z. B. Stift-Symbol als <div>/<span>/<svg> mit Mauszeiger „Hand“)
  if(!t&&(b.tagName==='svg'||b.tagName==='SVG'||b.tagName==='IMG'||b.querySelector('svg,img'))&&getComputedStyle(b).cursor==='pointer')return true;
  return false;}
-function fire(b){if(typeof b.click==='function')b.click();else b.dispatchEvent(new MouseEvent('click',{bubbles:true}));}
+function fire(b){var c=b.closest('button,a,[role=button]')||b;
+ ['pointerdown','mousedown','pointerup','mouseup'].forEach(function(n){try{c.dispatchEvent(new (n.indexOf('pointer')===0&&window.PointerEvent?PointerEvent:MouseEvent)(n,{bubbles:true,cancelable:true}));}catch(x){}});
+ if(typeof c.click==='function')c.click();else c.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));}
+var eds=document.querySelectorAll('[data-testid=card-action-edit],[data-testid*=edit i]');
+for(var q=0;q<eds.length;q++){var ed=eds[q];var cb=ed.parentElement;
+ for(var w=0;w<6&&cb;w++){var ct=(cb.innerText||'').replace(/\s+/g,' ').trim();
+  if(ct){if(other.test(ct)&&!/^zahlungsart/i.test(ct))break;
+   if(/^(zahlungsart|zahlungsmethode|bezahlart)\b/i.test(ct)){if(/paypal/i.test(ct)&&!/paypal (express|checkout)/i.test(ct))return 'paypal';fire(ed);return 'clicked';}}
+  cb=cb.parentElement;}}
 var els=document.querySelectorAll('h1,h2,h3,h4,h5,legend,dt,span,div,p,strong,b,label');
 for(var i=0;i<els.length;i++){var e=els[i];var t=txt(e);if(!t||t.length>30||!head.test(t))continue;
  var box=e.parentElement;
@@ -247,7 +277,13 @@ function paySec(){var head=/^(zahlungsart|zahlungsmethode|bezahlart|bezahlmethod
             Mode.BUY -> "${shop.label}-Auto-Kauf: "
             Mode.CART -> "${shop.label}-Warenkorb: "
         }
-        fun status(s: String) = watch?.setStatus(prefix + s)
+        synchronized(logLines) { logLines.clear() }
+        log(prefix + url)
+        var lastStatus = ""
+        fun status(s: String) {
+            if (s != lastStatus) { lastStatus = s; log(s) }
+            watch?.setStatus(prefix + s)
+        }
 
         // 0 = Produktseite, 1 = Hinzufügen bestätigen, 2 = Warenkorb prüfen, 3 = Kasse, 4 = bestellt, warte auf Bestätigung
         var stage = 0
@@ -267,6 +303,8 @@ function paySec(){var head=/^(zahlungsart|zahlungsmethode|bezahlart|bezahlmethod
         var paymentChanges = 0
         var paymentInfo = ""
         var paymentOptions = ""
+        var lastStep = ""
+        var payWait = 0 // nach Klick auf den Stift: so viele Runden nur auf die PayPal-Auswahl warten
 
         fun release() {
             handler.removeCallbacksAndMessages(null)
@@ -411,9 +449,37 @@ function paySec(){var head=/^(zahlungsart|zahlungsmethode|bezahlart|bezahlmethod
                             return@evaluateJavascript
                         }
                         // Zahlungsart PayPal bevorzugen (wenn eingeschaltet und angeboten)
+                        if (stage == 3 && Store.preferPaypal(ctx) && payWait > 0) {
+                            web.evaluateJavascript(PAYPAL_SELECT_JS) { pp ->
+                                if (!cont.isActive) return@evaluateJavascript
+                                log("Warte auf Zahlungsauswahl (${payWait}): " + (pp ?: ""))
+                                when {
+                                    pp?.contains("clicked") == true -> {
+                                        payWait = 0
+                                        paypalClicks++
+                                        status("Wähle Zahlungsart PayPal …")
+                                        again()
+                                    }
+                                    pp?.contains("already") == true -> {
+                                        payWait = 0
+                                        paypalState = "gewählt"
+                                        stepPoll()
+                                    }
+                                    else -> {
+                                        payWait--
+                                        if (payWait == 0) {
+                                            paymentOptions = pp?.trim('"')?.removePrefix("none|") ?: ""
+                                            stepPoll()
+                                        } else again()
+                                    }
+                                }
+                            }
+                            return@evaluateJavascript
+                        }
                         if (stage == 3 && Store.preferPaypal(ctx) && paypalClicks < 3) {
                             web.evaluateJavascript(PAYPAL_SELECT_JS) { pp ->
                                 if (!cont.isActive) return@evaluateJavascript
+                                log("PayPal-Suche: " + (pp ?: ""))
                                 when {
                                     pp?.contains("clicked") == true -> {
                                         paypalClicks++
@@ -427,8 +493,10 @@ function paySec(){var head=/^(zahlungsart|zahlungsmethode|bezahlart|bezahlmethod
                                             web.evaluateJavascript(PAYMENT_CHANGE_JS) { pc ->
                                                 if (!cont.isActive) return@evaluateJavascript
                                                 val v = pc?.trim('"') ?: ""
+                                                log("Stift Zahlungsart: $v")
                                                 if (v == "clicked") {
                                                     paymentChanges++
+                                                    payWait = 8
                                                     paymentOptions = ""
                                                     status("Zahlungsart ändern → PayPal …")
                                                     again()
@@ -447,6 +515,7 @@ function paySec(){var head=/^(zahlungsart|zahlungsmethode|bezahlart|bezahlmethod
                                     paymentChanges < 2 -> web.evaluateJavascript(PAYMENT_CHANGE_JS) { pc ->
                                         if (!cont.isActive) return@evaluateJavascript
                                         val v = pc?.trim('"') ?: ""
+                                        log("Stift Zahlungsart: $v")
                                         when {
                                             v == "paypal" -> {
                                                 paypalState = "gewählt"
@@ -454,6 +523,7 @@ function paySec(){var head=/^(zahlungsart|zahlungsmethode|bezahlart|bezahlmethod
                                             }
                                             v == "clicked" -> {
                                                 paymentChanges++
+                                                payWait = 8
                                                 status("Zahlungsart ändern → PayPal …")
                                                 again()
                                             }
@@ -479,6 +549,8 @@ function paySec(){var head=/^(zahlungsart|zahlungsmethode|bezahlart|bezahlmethod
                         if (!cont.isActive) return@evaluateJavascript
                         val o = WebShops.parseJs(raw)
                         val s = o.optString("s")
+                        val stepText = o.toString().take(150)
+                        if (stepText != lastStep) { lastStep = stepText; log("Schritt: $stepText") }
                         if (stage == 4) {
                             // Weiterleitung zu PayPal: „Jetzt zahlen“ drücken
                             val host = android.net.Uri.parse(web.url ?: "").host ?: ""
