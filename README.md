@@ -44,6 +44,15 @@ z. B. `PirateDeals` und `PirateDealsAngebote` (voreingestellt; derselbe Deal wir
 - **Über Payback öffnen** (Amazon, MediaMarkt, BAUR): PC – Bot-Browser öffnet die Payback-Shopseite, drückt „Jetzt shoppen“
   und lädt danach das Produkt; Handy – Payback-App, die Payback-Automatik leitet weiter und öffnet danach das Produkt.
 
+## 🔑 Konten & Passwörter, 🌙 Dark Mode
+
+- **App:** Knopf „⚙️ Konten, Passwörter & Dark Mode“ (oder ⚙️ oben rechts) → eigene Seite mit E-Mail/Passwort für Amazon,
+  Müller, MediaMarkt, BAUR, PayPal und Payback (verschlüsselt im Android-Schlüsselspeicher; Anzeigen nur nach Entsperren)
+  sowie Darstellung Hell / Dunkel / wie das Handy.
+- **Windows:** Bereich „🔑 Konten & Passwörter“ (DPAPI-verschlüsselt) und „🌙 Dark Mode“ in der Seitenleiste bzw. unter Einstellungen.
+- PayPal/Payback: E-Mail und Passwort werden auf deren Anmeldeseite im App-Fenster/Bot-Browser nur eingetragen –
+  „Einloggen“ und 2FA bestätigst du selbst. Passwörter werden nie exportiert.
+
 ## Funktionen
 - Produkte per Amazon-Link oder ASIN, optional mit Zielpreis
 - Hintergrundprüfung (mind. alle 15 Minuten)

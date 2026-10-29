@@ -8,6 +8,30 @@ const { shell, Menu, clipboard } = require('electron');
 const B = require('./browser');
 const Store = require('./store');
 
+/**
+ * PayPal/Payback: gespeicherte E-Mail und Passwort auf der Anmeldeseite nur EINTRAGEN (nicht abschicken).
+ * Mehrfach nachschauen, weil die Felder oft erst später erscheinen (PayPal: erst E-Mail, dann Passwort).
+ */
+function autofill(wc, url) {
+  let host = '';
+  try { host = new URL(url).hostname; } catch (e) { return; }
+  const key = /(^|\.)paypal\.com$/i.test(host) ? 'paypal' : /(^|\.)payback\.de$/i.test(host) ? 'payback' : null;
+  if (!key) return;
+  const mail = Store.loginEmail(key);
+  const pw = Store.loginPassword(key);
+  if (!mail && !pw) return;
+  const js = "(function(){function setv(el,v){if(!el||!v||el.value)return false;var d=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');" +
+    "d.set.call(el,v);el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));return true;}" +
+    'function vis(e){return e&&e.offsetParent!==null;}var n=0;' +
+    "var m=document.querySelector('#email,input[name=login_email],input[type=email],input[autocomplete=username],input[name*=mail i],input[id*=mail i],input[name*=user i]');" +
+    'if(vis(m)&&setv(m,' + JSON.stringify(mail || '') + '))n++;' +
+    "var p=document.querySelector('#password,input[name=login_password],input[type=password]');" +
+    'if(vis(p)&&setv(p,' + JSON.stringify(pw || '') + '))n++;return n;})()';
+  for (let i = 0; i < 30; i++) {
+    setTimeout(() => { if (!wc.isDestroyed() && wc.getURL() === url) B.js(wc, js); }, 800 + i * 2000);
+  }
+}
+
 function open(url, { checkout = false, forceInApp = false } = {}) {
   if (!forceInApp && Store.setting('externalBrowser')) {
     shell.openExternal(url);
@@ -31,6 +55,7 @@ function open(url, { checkout = false, forceInApp = false } = {}) {
       }[st];
       if (hint && !w.isDestroyed()) w.setTitle('Mr.Fox Bot – ' + hint);
     }
+    autofill(wc, u);
     if (checkout && !checkoutTried && u.includes('/cart/view')) {
       checkoutTried = true;
       await B.js(wc, "(function(){var sel=['input[name=\"proceedToRetailCheckout\"]','#sc-buy-box-ptc-button input','#sc-buy-box-ptc-button'];" +
@@ -56,6 +81,7 @@ function openViaPayback(key, url) {
   const Payback = require('./payback');
   const w = B.newWindow({ show: true, title: 'Mr.Fox Bot – öffne über Payback …', width: 1280, height: 950 });
   const wc = w.webContents;
+  wc.on('did-finish-load', () => autofill(wc, wc.getURL()));
   w.setMenu(Menu.buildFromTemplate([
     { label: '← Zurück', click: () => { if (wc.canGoBack()) wc.goBack(); } },
     { label: '⟳ Neu laden', click: () => wc.reload() },
@@ -77,4 +103,4 @@ function openViaPayback(key, url) {
   return w;
 }
 
-module.exports = { open, openViaPayback };
+module.exports = { open, openViaPayback, autofill };

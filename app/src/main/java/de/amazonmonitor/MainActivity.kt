@@ -130,6 +130,9 @@ class MainActivity : AppCompatActivity() {
             handler.postDelayed({ updateBotView() }, 800)
         }
         root.addView(botButton)
+        root.addView(button("⚙️ Konten, Passwörter & Dark Mode") {
+            startActivity(Intent(this, AccountsActivity::class.java))
+        })
         // Jeden Shop einzeln an/aus
         root.addView(TextView(this).apply {
             text = "Überwachung je Shop:"
@@ -384,50 +387,15 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        // --- Amazon-Zugang (verschlüsselt gespeichert)
-        root.addView(label("Amazon-Zugang (optional)"))
-        val inMail = edit(
-            "E-Mail",
-            InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
-            Store.loginEmail(this)
-        )
-        val inPw = edit(
-            if (Store.hasLogin(this)) "Passwort (gespeichert – leer lassen zum Behalten)" else "Passwort",
-            InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-        )
-        root.addView(inMail)
-        root.addView(inPw)
-        root.addView(button("Zugang speichern") {
-            val mail = inMail.text.toString().trim()
-            val pw = inPw.text.toString()
-            if (mail.isEmpty()) {
-                toast("Bitte E-Mail eintragen.")
-            } else if (pw.isEmpty() && !Store.hasLogin(this)) {
-                toast("Bitte Passwort eintragen.")
-            } else {
-                Store.saveLogin(this, mail, if (pw.isEmpty()) null else pw)
-                inPw.setText("")
-                toast("Zugang verschlüsselt gespeichert. Auto-Kauf und Warenkorb melden sich damit bei Bedarf selbst an.")
-            }
+        // --- Konten & Passwörter (eigene Seite)
+        root.addView(label("🔑 Konten & Passwörter"))
+        root.addView(TextView(this).apply {
+            text = "E-Mail und Passwort für Amazon, Müller, MediaMarkt, BAUR, PayPal und Payback verwaltest du jetzt auf einer " +
+                "eigenen Seite – dort auch Anmelden und der Dark Mode."
+            textSize = 12f
         })
-        root.addView(button("Zugang löschen") {
-            Store.clearLogin(this)
-            inMail.setText("")
-            inPw.setText("")
-            toast("Zugang gelöscht.")
-        })
+        root.addView(button("🔑 Konten & Passwörter öffnen") { startActivity(Intent(this, AccountsActivity::class.java)) })
 
-        root.addView(button("Bei Amazon anmelden (Chrome)") {
-            // Anmeldung in Chrome – Chromes Passwortmanager kann die Daten ausfüllen.
-            Links.openInChrome(this, "https://www.${Store.domain(this)}/gp/sign-in.html")
-        })
-        root.addView(button("In der App anmelden (nur nötig bei Code/Captcha für Auto-Kauf)") {
-            // Auto-Kauf und automatischer Warenkorb nutzen die Anmeldung der App, nicht die von Chrome.
-            startActivity(Links.inApp(this, "https://www.${Store.domain(this)}/gp/sign-in.html"))
-        }.apply { textSize = 12f })
-
-        // --- Zugang je Web-Shop (Müller, MediaMarkt, BAUR …), verschlüsselt gespeichert
-        for (ws in WebShops.all) addShopLoginSection(root, ws)
 
         // --- PAYBACK
         root.addView(label("💳 PAYBACK (°Punkte bei Amazon, MediaMarkt und BAUR)"))
@@ -608,6 +576,19 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
+    override fun onCreateOptionsMenu(menu: android.view.Menu): Boolean {
+        menu.add(0, 1, 0, "⚙️ Konten & Einstellungen").setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_IF_ROOM)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: android.view.MenuItem): Boolean {
+        if (item.itemId == 1) {
+            startActivity(Intent(this, AccountsActivity::class.java))
+            return true
+        }
+        return super.onOptionsItemSelected(item)
+    }
+
     // --- Anzeige „Bot läuft“
     private lateinit var botView: TextView
     private lateinit var botButton: Button
@@ -701,45 +682,6 @@ class MainActivity : AppCompatActivity() {
             .setNegativeButton("Abbrechen", null)
             .show()
             .findViewById<TextView>(android.R.id.message)?.setTextIsSelectable(true)
-    }
-
-    /** Eingabe für E-Mail/Passwort eines Web-Shops plus Anmelde-Knöpfe. */
-    private fun addShopLoginSection(root: LinearLayout, ws: WebShop) {
-        root.addView(label("${ws.emoji} ${ws.label}-Zugang (für Auto-Kauf bei ${ws.label})"))
-        val inMail = edit(
-            "E-Mail (${ws.label}-Konto)",
-            InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
-            Store.shopEmail(this, ws)
-        )
-        val inPw = edit(
-            if (Store.hasShopLogin(this, ws)) "Passwort (gespeichert – leer lassen zum Behalten)" else "Passwort",
-            InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-        )
-        root.addView(inMail)
-        root.addView(inPw)
-        root.addView(button("${ws.label}-Zugang speichern") {
-            val mail = inMail.text.toString().trim()
-            val pw = inPw.text.toString()
-            if (mail.isEmpty()) {
-                toast("Bitte E-Mail eintragen.")
-            } else if (pw.isEmpty() && !Store.hasShopLogin(this, ws)) {
-                toast("Bitte Passwort eintragen.")
-            } else {
-                Store.saveShopLogin(this, ws, mail, if (pw.isEmpty()) null else pw)
-                inPw.setText("")
-                toast("${ws.label}-Zugang verschlüsselt gespeichert.")
-            }
-        })
-        root.addView(button("${ws.label}-Zugang löschen") {
-            Store.clearShopLogin(this, ws)
-            inMail.setText("")
-            inPw.setText("")
-            toast("${ws.label}-Zugang gelöscht.")
-        })
-        root.addView(button("Bei ${ws.label} anmelden (Chrome)") { Links.openInChrome(this, ws.accountUrl) })
-        root.addView(button("Bei ${ws.label} in der App anmelden (für Auto-Kauf)") {
-            startActivity(Links.inApp(this, ws.accountUrl))
-        }.apply { textSize = 12f })
     }
 
     private fun toggleAutoBuy(p: Product) {

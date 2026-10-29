@@ -3,7 +3,7 @@
  * Mr.Fox Bot für Windows – Hauptprozess: Fenster, Taskleisten-Symbol, Dauerbetrieb und
  * die Schnittstelle für die Oberfläche.
  */
-const { app, BrowserWindow, Tray, Menu, ipcMain, dialog, shell, powerSaveBlocker, nativeImage, clipboard } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, dialog, shell, powerSaveBlocker, nativeImage, clipboard, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -196,6 +196,7 @@ function state() {
   const s = Store.settings();
   const logins = { amazon: { mail: Store.loginEmail('amazon'), hasPw: Store.hasLogin('amazon') } };
   for (const sh of Shops.SHOPS) logins[sh.key] = { mail: Store.loginEmail(sh.key), hasPw: Store.hasLogin(sh.key) };
+  for (const k of ['paypal', 'payback']) logins[k] = { mail: Store.loginEmail(k), hasPw: Store.hasLogin(k) };
   return {
     version: app.getVersion(),
     products: Store.products().map((p) => Object.assign(p, {
@@ -354,7 +355,7 @@ const api = {
   saveLogin: (key, mail, pw) => {
     mail = String(mail || '').trim();
     if (!mail) return 'Bitte E-Mail eintragen.';
-    if (!pw && !Store.hasLogin(key)) return 'Bitte Passwort eintragen.';
+    if (!pw && !Store.hasLogin(key) && key !== 'paypal' && key !== 'payback') return 'Bitte Passwort eintragen.';
     Store.saveLogin(key, mail, pw || null);
     pushState();
     return 'Zugang verschlüsselt gespeichert (Windows-Datenschutz).';
@@ -448,6 +449,14 @@ const api = {
       return { error: e.message };
     }
   },
+  setTheme: (mode) => {
+    const m = ['dark', 'light', 'system'].includes(mode) ? mode : 'dark';
+    Store.setSettings({ theme: m });
+    nativeTheme.themeSource = m;
+    pushState();
+    return '';
+  },
+  revealPassword: (key) => Store.loginPassword(key) || '',
   setSetting: (k, v) => {
     const allowed = ['paybackAutoBuy', 'preferPaypal', 'watchBuy', 'openOnAlert', 'externalBrowser', 'autoCart', 'keepAwake'];
     if (!allowed.includes(k)) return 'Nicht erlaubt.';
@@ -473,6 +482,7 @@ app.whenReady().then(async () => {
   if (!gotLock) return;
   B.setupSession();
   Store.load();
+  nativeTheme.themeSource = Store.setting('theme') || 'dark';
   if (SELFTEST) {
     const t = require('./selftest');
     const code = await t.run();

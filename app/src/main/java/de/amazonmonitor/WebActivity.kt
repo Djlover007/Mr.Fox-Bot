@@ -42,6 +42,7 @@ class WebActivity : AppCompatActivity() {
                 if (view != null) {
                     tryLogin(view)
                     tryCheckout(view, url)
+                    tryFill(view, url)
                 }
             }
         }
@@ -95,6 +96,38 @@ class WebActivity : AppCompatActivity() {
             "if(b){b.click();return 'clicked';}}" +
             "return 'none';})()"
         view.evaluateJavascript(js, null)
+    }
+
+    private val filled = HashSet<String>()
+
+    /**
+     * PayPal/Payback: gespeicherte E-Mail und Passwort (Konten & Einstellungen) auf der Anmeldeseite nur
+     * EINTRAGEN – „Einloggen“ und die Bestätigung (2FA) bleiben bei dir. Je Seite einmal, mehrfach nachgeschaut,
+     * weil die Felder oft erst später erscheinen.
+     */
+    private fun tryFill(view: WebView, url: String?) {
+        val host = try { android.net.Uri.parse(url ?: return).host ?: return } catch (e: Exception) { return }
+        val key = when {
+            host == "paypal.com" || host.endsWith(".paypal.com") -> Store.ACC_PAYPAL
+            host == "payback.de" || host.endsWith(".payback.de") -> Store.ACC_PAYBACK
+            else -> return
+        }
+        val mail = Store.accEmail(this, key)
+        val pw = Store.accPassword(this, key)
+        if (mail.isEmpty() && pw == null) return
+        if (!filled.add(url ?: return)) return
+        val js = "(function(){function setv(el,v){if(!el||!v||el.value)return false;" +
+            "var d=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');d.set.call(el,v);" +
+            "el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));return true;}" +
+            "function vis(e){return e&&e.offsetParent!==null;}" +
+            "var n=0;var m=document.querySelector('#email,input[name=login_email],input[type=email],input[autocomplete=username],input[name*=mail i],input[id*=mail i],input[name*=user i]');" +
+            "if(vis(m)&&setv(m," + org.json.JSONObject.quote(mail) + "))n++;" +
+            "var p=document.querySelector('#password,input[name=login_password],input[type=password]');" +
+            "if(vis(p)&&setv(p," + org.json.JSONObject.quote(pw ?: "") + "))n++;return n;})()"
+        // mehrmals versuchen (Felder erscheinen verzögert, PayPal fragt E-Mail und Passwort nacheinander ab)
+        for (i in 0 until 30) {
+            view.postDelayed({ if (!isDestroyed && view.url == url) view.evaluateJavascript(js, null) }, 800L + i * 2000L)
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

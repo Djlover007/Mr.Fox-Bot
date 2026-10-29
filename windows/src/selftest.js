@@ -131,6 +131,7 @@ function handler(req) {
     r = page('PAYBACK Amazon', `<div id="cookie"><button onclick="document.getElementById('cookie').remove()">Alle akzeptieren</button></div>
       <h1>Amazon</h1><a href="https://www.amazon.de/?tag=payback-21">Jetzt shoppen</a>`);
   } else if (u.hostname === 'www.amazon.de') r = page('Amazon.de', '<h1>Amazon über Payback</h1>');
+  else if (u.hostname === 'www.paypal.com') r = page('PayPal', '<form><input id="email" type="email"><button type="button" onclick="document.getElementById(\'pwbox\').style.display=\'block\'">Weiter</button><div id="pwbox" style="display:none"><input id="password" type="password"></div></form>');
   else if (u.hostname === 't.me') r = telegram(u);
   else if (u.hostname === 's.pirat.deals') r = pirat(u);
   else if (u.hostname === 'www.mock-amazon.test') r = amazon(u);
@@ -264,7 +265,19 @@ async function run() {
     check('Telegram: Gruppe wird erkannt', /kein öffentlicher Kanal/.test(tbad), tbad);
     Store.setSettings({ tgEnabled: false });
 
-    // 15) Oberfläche lädt ohne Fehler
+    // 15) Konten: PayPal-Anmeldung wird nur ausgefüllt (E-Mail, nach „Weiter“ auch Passwort)
+    Store.saveLogin('paypal', 'fuchs@example.org', 'Geheim123!');
+    const ww = require('./webwin').open('https://www.paypal.com/signin', { forceInApp: true });
+    await B.sleep(3500);
+    const em = await B.js(ww.webContents, "document.getElementById('email').value");
+    await B.js(ww.webContents, "document.querySelector('button').click()");
+    await B.sleep(4500);
+    const pv = await B.js(ww.webContents, "document.getElementById('password').value");
+    check('Konten: PayPal-Anmeldung ausgefüllt', em === 'fuchs@example.org' && pv === 'Geheim123!', em + ' / ' + (pv ? '***' : 'leer'));
+    ww.destroy();
+    check('Konten: Passwort verschlüsselt gespeichert', !JSON.stringify(Store.load().secrets).includes('Geheim123!') && Store.loginPassword('paypal') === 'Geheim123!', '');
+
+    // 16) Oberfläche lädt ohne Fehler
     const errors = [];
     const w = new BrowserWindow({ show: false, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true } });
     w.webContents.on('console-message', (_e, level, msg) => { if (level >= 3) errors.push(msg); });
@@ -273,7 +286,10 @@ async function run() {
     const n = await w.webContents.executeJavaScript("document.querySelectorAll('.prod').length+'|'+document.getElementById('sigver').textContent");
     if (process.env.MRFOX_SHOT) {
       w.setSize(1180, 900);
-      for (const [tab, file] of [['products', 'shot-products.png'], ['settings', 'shot-settings.png'], ['telegram', 'shot-telegram.png']]) {
+      Store.setSettings({ theme: 'light' });
+      w.webContents.send('changed');
+      await B.sleep(800);
+      for (const [tab, file] of [['products', 'shot-products.png'], ['logins', 'shot-logins.png'], ['settings', 'shot-settings.png']]) {
         await w.webContents.executeJavaScript(`document.querySelector('nav button[data-tab="${tab}"]').click()`);
         await B.sleep(400);
         const img = await w.webContents.capturePage();

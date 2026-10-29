@@ -13,11 +13,12 @@
     <button data-tab="products" class="on">🛍️ Produkte</button>
     <button data-tab="alerts">🔔 Alarme <span id="alertCount" class="pill"></span></button>
     <button data-tab="settings">⚙️ Einstellungen</button>
-    <button data-tab="logins">🔑 Zugänge</button>
+    <button data-tab="logins">🔑 Konten &amp; Passwörter</button>
     <button data-tab="telegram">📣 Telegram-Deals</button>
     <button data-tab="payback">💳 Payback</button>
     <button data-tab="data">📦 Export/Import</button>
   </nav>
+  <button id="themeToggle" class="themebtn">🌙 Dark Mode: an</button>
   <div class="sig">🦊 Design by Mr.Fox<br><span id="sigver"></span></div>
 </aside>
 
@@ -87,6 +88,12 @@
       <label class="cb"><input type="checkbox" id="sExternal"> Links im Standard-Browser (z. B. Chrome) statt im Bot-Browser öffnen (Chrome hat eine eigene Anmeldung)</label>
     </div>
     <div class="card">
+      <h2>🌙 Darstellung</h2>
+      <label class="cb"><input type="radio" name="theme" value="dark"> 🌙 Dunkel (Dark Mode)</label>
+      <label class="cb"><input type="radio" name="theme" value="light"> ☀️ Hell</label>
+      <label class="cb"><input type="radio" name="theme" value="system"> 🖥️ Wie Windows (System-Einstellung)</label>
+    </div>
+    <div class="card">
       <h2>Windows</h2>
       <label class="cb"><input type="checkbox" id="sAutostart"> Mit Windows starten (im Hintergrund; Dauerbetrieb läuft weiter, wenn er an war)</label>
       <label class="cb"><input type="checkbox" id="sAwake"> PC nicht in den Energiesparmodus gehen lassen, solange der Bot läuft</label>
@@ -96,6 +103,13 @@
   </section>
 
   <section id="tab-logins" class="tab">
+    <div class="card">
+      <h2>🔑 Konten &amp; Passwörter</h2>
+      <p class="hint">E-Mail und Passwort für Amazon, Müller, MediaMarkt, BAUR, PayPal und Payback. Passwörter werden mit dem
+        Windows-Datenschutz (DPAPI) verschlüsselt gespeichert, nur für dein Windows-Konto lesbar und nie exportiert.
+        Amazon und Shops: der Bot meldet sich damit selbst an. PayPal und Payback: E-Mail/Passwort werden auf deren
+        Anmeldeseite im Bot-Browser nur eingetragen – „Einloggen“ und die Bestätigung (2FA) machst du selbst.</p>
+    </div>
     <div id="loginCards"></div>
   </section>
 

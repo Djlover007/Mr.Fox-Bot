@@ -489,6 +489,53 @@ object Store {
         return n to disarmed
     }
 
+    // --- Konten (E-Mail/Passwort) für alle Dienste; Passwort verschlüsselt im Android-Schlüsselspeicher
+    /** Speicher-Präfix je Konto (Amazon/Shops wie bisher, damit gespeicherte Zugänge erhalten bleiben). */
+    fun accPrefix(key: String): String = when (key) {
+        Product.SHOP_AMAZON -> "amz"
+        ACC_PAYPAL -> "acc_paypal"
+        ACC_PAYBACK -> "acc_payback"
+        else -> WebShops.byKey(key)?.credPrefix ?: "acc_$key"
+    }
+
+    const val ACC_PAYPAL = "paypal"
+    const val ACC_PAYBACK = "payback"
+
+    fun accEmail(c: Context, key: String): String = prefs(c).getString(accPrefix(key) + "_mail", "") ?: ""
+
+    fun hasAccPassword(c: Context, key: String): Boolean = prefs(c).getString(accPrefix(key) + "_pw", null) != null
+
+    fun accPassword(c: Context, key: String): String? =
+        prefs(c).getString(accPrefix(key) + "_pw", null)?.let { Vault.decrypt(it) }
+
+    /** Speichert die E-Mail; das Passwort nur, wenn eines übergeben wird. */
+    fun saveAcc(c: Context, key: String, email: String, password: String?) {
+        val e = prefs(c).edit().putString(accPrefix(key) + "_mail", email)
+        if (password != null) e.putString(accPrefix(key) + "_pw", Vault.encrypt(password))
+        e.apply()
+    }
+
+    fun clearAcc(c: Context, key: String) {
+        prefs(c).edit().remove(accPrefix(key) + "_mail").remove(accPrefix(key) + "_pw").apply()
+    }
+
+    // --- Darstellung (Dark Mode)
+    const val THEME_SYSTEM = "system"
+    const val THEME_DARK = "dark"
+    const val THEME_LIGHT = "light"
+
+    fun themeMode(c: Context): String = prefs(c).getString("theme", THEME_SYSTEM) ?: THEME_SYSTEM
+
+    fun saveThemeMode(c: Context, mode: String) {
+        prefs(c).edit().putString("theme", mode).apply()
+    }
+
+    fun nightMode(c: Context): Int = when (themeMode(c)) {
+        THEME_DARK -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
+        THEME_LIGHT -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO
+        else -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+    }
+
     fun status(c: Context): String = prefs(c).getString("status", "–") ?: "–"
 
     fun setStatus(c: Context, text: String) {

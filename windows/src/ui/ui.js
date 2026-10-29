@@ -310,33 +310,65 @@ document.addEventListener('click', (e) => {
 /** Zugangs-Karten neu aufbauen – außer während dort getippt wird. */
 function loginsBusy() { return $('loginCards').contains(document.activeElement); }
 function loginCard(key, title, hint, loginUrl) {
-  const mail = el('input', { placeholder: 'E-Mail', value: S.logins[key].mail || '' });
-  const pw = el('input', { type: 'password', placeholder: S.logins[key].hasPw ? 'Passwort (gespeichert – leer lassen zum Behalten)' : 'Passwort' });
-  const status = el('div', { class: 'hint' }, S.logins[key].hasPw ? '🔒 Passwort gespeichert (verschlüsselt)' : 'Kein Passwort gespeichert');
+  const L = S.logins[key] || {};
+  const mail = el('input', { placeholder: 'E-Mail', value: L.mail || '' });
+  const pw = el('input', { type: 'password', placeholder: L.hasPw ? 'Passwort (gespeichert – leer lassen zum Behalten)' : 'Passwort' });
+  const status = el('div', { class: 'hint' }, L.hasPw ? '✅ Passwort gespeichert (verschlüsselt)' : (L.mail ? 'Nur E-Mail gespeichert' : 'Noch nichts gespeichert'));
+  const eye = act('👁 Anzeigen', async () => {
+    if (pw.type === 'text') { pw.type = 'password'; eye.textContent = '👁 Anzeigen'; return ''; }
+    if (!pw.value && L.hasPw) pw.value = await call('revealPassword', key);
+    pw.type = 'text';
+    eye.textContent = '🙈 Verbergen';
+    return '';
+  });
   return el('div', { class: 'card' },
     el('h2', {}, title),
     el('p', { class: 'hint' }, hint),
     el('div', { class: 'grid2' }, mail, pw),
     status,
     el('div', { class: 'row' },
-      act('Zugang speichern', async () => { const r = await call('saveLogin', key, mail.value, pw.value); pw.value = ''; return r; }, 'primary'),
-      act('Zugang löschen', async () => { mail.value = ''; pw.value = ''; return call('clearLogin', key); }, 'danger'),
-      act('Im Bot-Browser anmelden', () => call('openInApp', loginUrl))));
+      act('💾 Speichern', async () => { const r = await call('saveLogin', key, mail.value, pw.value); pw.value = ''; pw.type = 'password'; return r; }, 'primary'),
+      eye,
+      act('🗑 Löschen', async () => {
+        const ok = await modal(title + ' löschen?', 'E-Mail und Passwort werden aus dem Bot entfernt.', [['Abbrechen', false], ['Löschen', true, 'primary']]);
+        if (!ok) return '';
+        mail.value = ''; pw.value = '';
+        return call('clearLogin', key);
+      }, 'danger'),
+      act('🔐 Im Bot-Browser anmelden', () => call('openInApp', loginUrl))));
 }
 function renderLogins() {
   if (loginsBusy()) return;
   const box = $('loginCards');
   box.innerHTML = '';
-  box.append(loginCard('amazon', '🟡 Amazon-Zugang',
+  box.append(loginCard('amazon', '🟡 Amazon',
     'Auto-Kauf und automatischer Warenkorb melden sich damit bei Bedarf selbst an. Bei Code/Captcha einmal „Im Bot-Browser anmelden“.',
     `https://www.${S.settings.domain}/gp/sign-in.html`));
   for (const s of S.shops) {
-    box.append(loginCard(s.key, `${s.emoji} ${s.label}-Zugang`, `Für Auto-Kauf und Warenkorb bei ${s.label}.`, s.accountUrl));
+    box.append(loginCard(s.key, `${s.emoji} ${s.label}`, `Für Auto-Kauf und Warenkorb bei ${s.label}.`, s.accountUrl));
   }
-  box.append(el('div', { class: 'card' }, el('h2', {}, '🅿️ PayPal'),
-    el('p', { class: 'hint' }, 'Das PayPal-Passwort wird nicht gespeichert. Einmal im Bot-Browser anmelden und „Eingeloggt bleiben“ anhaken – dann kann der Bot nach dem Bestellen „Jetzt zahlen“ drücken.'),
-    act('Bei PayPal anmelden (Bot-Browser)', () => call('openInApp', 'https://www.paypal.com/signin'), 'primary')));
+  box.append(loginCard('paypal', '🅿️ PayPal',
+    'Wird auf der PayPal-Anmeldeseite im Bot-Browser eingetragen – „Einloggen“ und die Bestätigung machst du selbst („Eingeloggt bleiben“ anhaken). Danach kann der Bot nach dem Bestellen „Jetzt zahlen“ drücken.',
+    'https://www.paypal.com/signin'));
+  box.append(loginCard('payback', '💳 Payback',
+    'Wird auf der Payback-Anmeldeseite im Bot-Browser eingetragen – 2FA bestätigst du selbst. Nötig für „Über Payback öffnen“ und Auto-Kauf über Payback.',
+    'https://www.payback.de/login'));
 }
+
+// ---------------- Darstellung ----------------
+function applyTheme() {
+  const mode = (S && S.settings.theme) || 'dark';
+  const dark = mode === 'dark' || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  $('themeToggle').textContent = dark ? '🌙 Dark Mode: an' : '☀️ Dark Mode: aus';
+  document.querySelectorAll('input[name=theme]').forEach((r) => { r.checked = r.value === mode; });
+}
+$('themeToggle').addEventListener('click', async () => {
+  const dark = document.documentElement.dataset.theme !== 'light';
+  await call('setTheme', dark ? 'light' : 'dark');
+});
+document.querySelectorAll('input[name=theme]').forEach((r) => r.addEventListener('change', () => { if (r.checked) call('setTheme', r.value); }));
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
 
 // ---------------- Payback ----------------
 function renderPayback() {
@@ -412,6 +444,7 @@ async function refresh() {
   S = await call('state');
   $('ver').textContent = 'Version ' + S.version;
   $('sigver').textContent = 'Version ' + S.version + ' (Windows)';
+  applyTheme();
   renderBot();
   renderShopPick();
   renderFilters();
