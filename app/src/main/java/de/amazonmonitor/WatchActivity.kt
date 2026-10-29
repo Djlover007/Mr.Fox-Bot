@@ -105,7 +105,19 @@ for(var j=0;j<rs.length&&j<40;j++){var r=rs[j];var lab='';if(r.id){var l=documen
 var bs=document.querySelectorAll('button,a,[role=button],input[type=submit]');out.push('--- Knöpfe');
 var n=0;for(var k=0;k<bs.length&&n<60;k++){var b=bs[k];if(!seen(b))continue;var tx=t(b);var al=a(b,'aria-label')+a(b,'title')+a(b,'data-testid');
  if(!tx&&!al)al=' class="'+((b.getAttribute('class')||'').slice(0,40))+'"';out.push(b.tagName+': '+tx+al);n++;}
-var pp=[].filter.call(document.querySelectorAll('*'),function(e){return e.children.length===0&&/paypal/i.test((e.innerText||e.alt||e.getAttribute('aria-label')||''));});
+out.push('--- Klickbare Symbole (ohne Text)');
+var cs=document.querySelectorAll('div,span,svg,img,i');var nc=0;
+for(var c=0;c<cs.length&&nc<25;c++){var el=cs[c];if(t(el)||!seen(el))continue;if(getComputedStyle(el).cursor!=='pointer')continue;
+ if(el.parentElement&&getComputedStyle(el.parentElement).cursor==='pointer'&&!t(el.parentElement))continue;
+ var near='';var up2=el.parentElement;for(var z=0;z<4&&up2&&!near;z++){near=t(up2);up2=up2.parentElement;}
+ out.push(el.tagName+a(el,'class').slice(0,50)+a(el,'data-testid')+' | in der Nähe: '+near.slice(0,40));nc++;}
+out.push('--- Abschnitte (Text)');
+var hd=document.querySelectorAll('h2,h3,h4,div,span,p');var ns=0;
+for(var d=0;d<hd.length&&ns<8;d++){var hx=hd[d];var ht=t(hx);if(!/^(zahlungsart|lieferservice|lieferadresse|rechnungsadresse)$/i.test(ht))continue;
+ var bx=hx.parentElement;for(var y=0;y<4&&bx;y++){var bxt=(bx.innerText||'').replace(/\s+/g,' ').trim();if(bxt.length>ht.length+8){out.push(ht+': '+bxt.slice(0,140));break;}bx=bx.parentElement;}ns++;}
+var nd=document.getElementById('__NEXT_DATA__');if(nd){var js=nd.textContent;var re2=/.{0,80}paypal.{0,80}/gi;var mm;var nn=0;out.push('--- Seitendaten mit „paypal“');
+ while((mm=re2.exec(js))!==null&&nn<6){out.push(mm[0].replace(/"(firstName|lastName|street|email|phone|city|zip)[^,]*,/gi,''));nn++;}}
+var pp=[].filter.call(document.querySelectorAll('body *:not(script)'),function(e){return e.children.length===0&&/paypal/i.test((e.innerText||e.alt||e.getAttribute('aria-label')||''));});
 out.push('--- Elemente mit „PayPal“ ('+pp.length+')');
 for(var q=0;q<pp.length&&q<10;q++){var e=pp[q];var chain=[];var x=e;for(var u=0;u<4&&x;u++){chain.push(x.tagName+(x.getAttribute('role')?'[role='+x.getAttribute('role')+']':'')+(x.getAttribute('class')?'.'+x.getAttribute('class').split(' ')[0].slice(0,25):''));x=x.parentElement;}
  out.push(chain.join(' < ')+' | '+t(e));}

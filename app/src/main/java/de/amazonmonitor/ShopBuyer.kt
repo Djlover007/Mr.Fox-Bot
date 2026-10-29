@@ -88,6 +88,8 @@ function isEdit(b){var t=txt(b);if(t&&chg.test(t))return true;
  var al=((b.getAttribute('aria-label')||'')+' '+(b.getAttribute('title')||'')+' '+(b.getAttribute('class')||'')+' '+(b.getAttribute('data-testid')||''));
  if(/bearbeit|ändern|edit|pencil|stift/i.test(al))return true;
  if(!t&&(b.tagName==='BUTTON'||b.tagName==='A'||b.getAttribute('role')==='button')&&b.querySelector('svg,img'))return true;
+ // anklickbare Grafik ohne Text (z. B. Stift-Symbol als <div>/<span>/<svg> mit Mauszeiger „Hand“)
+ if(!t&&(b.tagName==='svg'||b.tagName==='SVG'||b.tagName==='IMG'||b.querySelector('svg,img'))&&getComputedStyle(b).cursor==='pointer')return true;
  return false;}
 function fire(b){if(typeof b.click==='function')b.click();else b.dispatchEvent(new MouseEvent('click',{bubbles:true}));}
 var els=document.querySelectorAll('h1,h2,h3,h4,h5,legend,dt,span,div,p,strong,b,label');
@@ -97,8 +99,8 @@ for(var i=0;i<els.length;i++){var e=els[i];var t=txt(e);if(!t||t.length>30||!hea
   if(bt.length>600)break;
   if(/paypal/i.test(bt)&&!/paypal (express|checkout)/i.test(bt))return 'paypal';
   if(other.test(bt))break; // nicht in den Abschnitt Lieferadresse o. Ä. geraten
-  var bs=box.querySelectorAll('button,a,[role=button],[aria-label],[title],svg,img,[class*="edit" i],[class*="pencil" i]');
-  for(var j=0;j<bs.length;j++){if(isEdit(bs[j])&&vis(bs[j])){fire(bs[j]);return 'clicked';}}
+  var bs=box.querySelectorAll('button,a,[role=button],[aria-label],[title],svg,img,[class*="edit" i],[class*="pencil" i],div,span');
+  for(var j=0;j<bs.length;j++){if(isEdit(bs[j])&&vis(bs[j])){var tg=bs[j];var ic=tg.querySelector&&tg.querySelector('svg,img');if(ic&&!txt(tg))tg=ic;fire(tg);return 'clicked';}}
   box=box.parentElement;}
  var pt=(e.parentElement&&e.parentElement.parentElement&&e.parentElement.parentElement.innerText||'').replace(/\s+/g,' ').trim().slice(0,80);
  return 'none:'+pt;}
@@ -146,7 +148,7 @@ function pickIn(root,re,ex){var els=root.querySelectorAll('button,a,input[type=s
 function roots(){var d=dlg();return d?[d,document]:[document];}
 """
 
-    private val FINAL_RE = "/zahlungspflichtig bestellen|kostenpflichtig bestellen|zahlungspflichtig kaufen|jetzt kaufen|^kaufen${'$'}|kaufen und bezahlen|bestellung absenden|jetzt bestellen/i"
+    private val FINAL_RE = "/zum genannten preis bestellen|jetzt zahlungspflichtig bestellen|bestellung abschicken|zahlungspflichtig bestellen|kostenpflichtig bestellen|zahlungspflichtig kaufen|jetzt kaufen|^kaufen${'$'}|kaufen und bezahlen|bestellung absenden|jetzt bestellen/i"
     private val NEXT_RE = "/^(weiter|weiter zu.*|weiter zur .*|zur zahlung|zur bestellübersicht|zur übersicht|bestellung prüfen|übernehmen|speichern und weiter|auswählen und weiter|bestätigen|fortfahren|speichern|auswahl speichern|zahlungsart übernehmen|zahlungsart speichern)${'$'}/i"
 
     /** Text des Zahlungs-Abschnitts (z. B. „Zahlungsart Ratenzahlung in 48 Monatsraten …“). */
@@ -172,6 +174,7 @@ function paySec(){var head=/^(zahlungsart|zahlungsmethode|bezahlart|bezahlmethod
         "var rs=roots();" +
         "for(var q=0;q<rs.length;q++){var R=rs[q];" +
         " var f=pickIn(R,$FINAL_RE,/einkaufen/i);" +
+        " if(!f&&R===document){var os=document.querySelector('[data-testid=order-submit],[data-testid*=order-submit i],button[name=placeOrder]');if(os&&vis(os))f=os;}" +
         " if(f)return JSON.stringify({s:'final',total:findTotal(document)||'',label:txt(f),hint:hintOf(document),pay:paySec(),qty:maxQty()});" +
         " if(q===0&&R!==document){var n0=pickIn(R,$NEXT_RE,/einkaufen|shoppen/i);if(n0)return JSON.stringify({s:'click',label:txt(n0)});}" +
         "}" +
