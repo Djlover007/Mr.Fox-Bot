@@ -286,6 +286,11 @@ object Store {
     /** "alert" = nur Alarm, "watch" = auf die Liste, "cart" = auf die Liste + Warenkorb */
     fun tgAction(c: Context): String = prefs(c).getString("tg_action", "alert") ?: "alert"
     fun tgInterval(c: Context): Int = prefs(c).getInt("tg_interval", 1).coerceAtLeast(1)
+    /** Treffer bei Payback-Partnern (Amazon, MediaMarkt, BAUR) über Payback öffnen. */
+    fun tgPayback(c: Context): Boolean = prefs(c).getBoolean("tg_payback", true)
+    fun saveTgPayback(c: Context, on: Boolean) {
+        prefs(c).edit().putBoolean("tg_payback", on).apply()
+    }
     fun tgLast(c: Context, channel: String): Long = prefs(c).getLong("tg_last_" + channel.lowercase(), 0L)
     fun setTgLast(c: Context, channel: String, id: Long) {
         prefs(c).edit().putLong("tg_last_" + channel.lowercase(), id).apply()
@@ -429,6 +434,7 @@ object Store {
             .put("tgMaxPrice", tgMaxPrice(c) ?: JSONObject.NULL)
             .put("tgAction", tgAction(c))
             .put("tgInterval", tgInterval(c))
+            .put("tgPayback", tgPayback(c))
         return JSONObject()
             .put("app", "Mr.Fox Bot")
             .put("format", 1)
@@ -477,6 +483,7 @@ object Store {
             if (s.has("tgMaxPrice")) e.putString("tg_max", if (s.isNull("tgMaxPrice")) "" else s.optDouble("tgMaxPrice").toString())
             if (s.has("tgAction")) e.putString("tg_action", s.optString("tgAction", "alert"))
             if (s.has("tgInterval")) e.putInt("tg_interval", s.optInt("tgInterval", 1).coerceAtLeast(1))
+            if (s.has("tgPayback")) e.putBoolean("tg_payback", s.optBoolean("tgPayback", true))
             e.apply()
         }
         return n to disarmed

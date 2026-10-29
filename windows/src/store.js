@@ -39,6 +39,7 @@ const DEFAULTS = {
   tgMaxPrice: null,
   tgAction: 'alert',
   tgInterval: 1,
+  tgPayback: true,
   lastRun_tg: 0,
 };
 
@@ -214,7 +215,7 @@ function clearAlerts() {
 }
 
 // ---------- Export / Import (gleiches Format wie die Android-App) ----------
-const SETTING_KEYS = ['domain', 'interval', 'amazonInterval', 'drop', 'webhook', 'autoCart', 'preferPaypal', 'tgEnabled', 'tgChannels', 'tgKeywords', 'tgExclude', 'tgMaxPrice', 'tgAction', 'tgInterval'];
+const SETTING_KEYS = ['domain', 'interval', 'amazonInterval', 'drop', 'webhook', 'autoCart', 'preferPaypal', 'tgEnabled', 'tgChannels', 'tgKeywords', 'tgExclude', 'tgMaxPrice', 'tgAction', 'tgInterval', 'tgPayback'];
 
 function exportJson() {
   load();

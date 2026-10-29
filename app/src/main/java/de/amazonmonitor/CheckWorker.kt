@@ -403,11 +403,15 @@ object Checker {
     }
 
     @SuppressLint("MissingPermission")
-    private fun notifyUser(
+    internal fun notifyUser(
         ctx: Context, title: String, text: String, url: String, cartUrl: String, checkoutUrl: String,
         fullScreenUrl: String? = null,
         /** Shop-Schlüssel + Produktname für den Knopf „Über Payback kaufen“ (null = kein Knopf). */
         payback: Pair<String, String>? = null,
+        /** Produkt, das Payback nach der Weiterleitung öffnen soll (z. B. Telegram-Deal). */
+        paybackUrl: String? = null,
+        /** Antippen der Meldung öffnet über Payback statt direkt. */
+        tapViaPayback: Boolean = false,
     ) {
         val nm = NotificationManagerCompat.from(ctx)
         nm.createNotificationChannel(
@@ -415,7 +419,8 @@ object Checker {
                 .setName("Preisalarme")
                 .build()
         )
-        val pi = Links.pending(ctx, url, false, url.hashCode())
+        val pi = if (tapViaPayback && payback != null) Payback.pending(ctx, payback.first, payback.second, url.hashCode() + 3, paybackUrl)
+        else Links.pending(ctx, url, false, url.hashCode())
         val cartPi = Links.pending(ctx, cartUrl, false, cartUrl.hashCode())
         val checkoutPi = Links.pending(ctx, checkoutUrl, true, checkoutUrl.hashCode())
         val b = NotificationCompat.Builder(ctx, CHANNEL)
@@ -431,7 +436,7 @@ object Checker {
         if (payback != null) {
             b.addAction(
                 android.R.drawable.ic_menu_share, "💳 Über Payback kaufen",
-                Payback.pending(ctx, payback.first, payback.second, url.hashCode() + 2)
+                Payback.pending(ctx, payback.first, payback.second, url.hashCode() + 2, paybackUrl)
             )
         }
         if (fullScreenUrl != null) {

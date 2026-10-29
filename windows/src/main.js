@@ -317,6 +317,7 @@ const api = {
     return r.result === 'OK' ? '✅ Im Warenkorb: ' + r.detail : r.result === 'NOT_LOGGED_IN' ? '⚠️ Nicht angemeldet: ' + r.detail : '⚠️ Nicht geklappt: ' + r.detail;
   },
   open: (url, checkout) => { WebWin.open(url, { checkout: !!checkout }); },
+  openViaPayback: (key, url) => { WebWin.openViaPayback(key, url); },
   openInApp: (url) => { WebWin.open(url, { forceInApp: true }); },
   openExternal: (url) => { shell.openExternal(url); },
   saveSettings: (o) => {
@@ -432,6 +433,7 @@ const api = {
       tgMaxPrice: max,
       tgAction: ['alert', 'watch', 'cart'].includes(o.action) ? o.action : 'alert',
       tgInterval: Math.max(1, parseInt(o.interval, 10) || 1),
+      tgPayback: o.payback !== false,
     });
     if (prev !== chans.join(',')) tgStatus = '';
     pushState();

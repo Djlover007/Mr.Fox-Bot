@@ -4,6 +4,8 @@ import android.accessibilityservice.AccessibilityService
 import android.app.KeyguardManager
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -107,6 +109,13 @@ class PaybackClicker : AccessibilityService() {
             }
             // Kein Cookie-Hinweis in der Amazon-App? Nach 5 Sek. einfach weiter.
             if (buy && pkg == AMAZON_PACKAGE && now - stageTime(this) > 5_000) setStage(this, STAGE_SEARCH)
+            // Nur öffnen (z. B. Telegram-Deal): im Shop angekommen, kein Hinweis mehr → Produkt öffnen
+            if (!buy && pkg != PAYBACK_PACKAGE && now - stageTime(this) > 5_000 &&
+                !prefs(this).getString(OPEN_URL, "").isNullOrEmpty()
+            ) {
+                disarm(this)
+                openPending()
+            }
             return
         }
         if (!buy || pkg != AMAZON_PACKAGE) return
@@ -164,7 +173,38 @@ class PaybackClicker : AccessibilityService() {
     override fun onInterrupt() {}
 
     private fun afterCookies() {
-        if (mode(this) == MODE_BUY) setStage(this, STAGE_SEARCH) else disarm(this)
+        if (mode(this) == MODE_BUY) {
+            setStage(this, STAGE_SEARCH)
+        } else {
+            disarm(this)
+            openPending()
+        }
+    }
+
+    /**
+     * Nach der Payback-Weiterleitung das gewünschte Produkt öffnen (z. B. Telegram-Deal, saubere Adresse ohne
+     * Partner-Tag). Amazon-Links in der Amazon-App, sonst im Browser.
+     */
+    private fun openPending() {
+        val p = prefs(this)
+        val url = p.getString(OPEN_URL, "") ?: ""
+        if (url.isEmpty()) return
+        p.edit().putString(OPEN_URL, "").apply()
+        handler.postDelayed({
+            try {
+                val i = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                if (url.contains("amazon.")) {
+                    val inApp = Intent(i).setPackage(AMAZON_PACKAGE)
+                    if (inApp.resolveActivity(packageManager) != null) {
+                        startActivity(inApp)
+                        return@postDelayed
+                    }
+                }
+                startActivity(i)
+            } catch (e: Exception) {
+                // Link liegt in der Zwischenablage
+            }
+        }, 1_200)
     }
 
     private fun submitSearch() {
@@ -291,6 +331,7 @@ class PaybackClicker : AccessibilityService() {
         private const val NAME = "pb_name"
         private const val DRY = "pb_dry"
         private const val LAST_PKG = "pb_last_pkg"
+        private const val OPEN_URL = "pb_open_url"
 
         @Volatile
         private var instance: PaybackClicker? = null
@@ -298,11 +339,12 @@ class PaybackClicker : AccessibilityService() {
 
         private fun prefs(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-        /** OPEN: für 90 Sekunden scharf machen (vor dem Öffnen der Payback-App). */
-        fun arm(ctx: Context) {
+        /** OPEN: für 90 Sekunden scharf machen (vor dem Öffnen der Payback-App); [openUrl] = danach zu öffnendes Produkt. */
+        fun arm(ctx: Context, openUrl: String? = null) {
             prefs(ctx).edit()
                 .putLong(KEY, System.currentTimeMillis() + 90_000L)
                 .putInt(STAGE, STAGE_START).putLong(STAGE_AT, System.currentTimeMillis())
+                .putString(OPEN_URL, openUrl ?: "")
                 .putString(MODE, MODE_OPEN).putString(LAST_PKG, "").apply()
             instance?.startTicking()
         }

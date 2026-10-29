@@ -254,7 +254,8 @@ function renderAlerts() {
       el('b', {}, a.title),
       el('div', { class: 'txt' }, a.text),
       el('div', { class: 'row' },
-        links.page ? el('button', { onclick: () => call('open', links.page) }, 'Seite öffnen') : null,
+        links.page && links.payback ? el('button', { class: 'primary', onclick: () => call('openViaPayback', links.payback, links.page) }, '💳 Über Payback öffnen') : null,
+        links.page ? el('button', { onclick: () => call('open', links.page) }, links.payback ? 'Ohne Payback öffnen' : 'Seite öffnen') : null,
         links.cart && links.cart !== links.page ? el('button', { onclick: () => call('open', links.cart) }, 'In den Warenkorb') : null,
         links.checkout ? el('button', { onclick: () => call('open', links.checkout, true) }, 'Zur Kasse') : null)));
   }
@@ -367,6 +368,7 @@ function renderTelegram() {
   $('tgExclude').value = s.tgExclude || '';
   $('tgMaxPrice').value = s.tgMaxPrice == null ? '' : String(s.tgMaxPrice).replace('.', ',');
   $('tgInterval').value = s.tgInterval || 1;
+  $('tgPayback').checked = s.tgPayback !== false;
   document.querySelectorAll('input[name=tgAction]').forEach((r) => { r.checked = r.value === (s.tgAction || 'alert'); });
 }
 $('tgSave').addEventListener('click', async () => {
@@ -380,6 +382,7 @@ $('tgSave').addEventListener('click', async () => {
   toast(await call('tgSave', {
     enabled: $('tgEnabled').checked, channels: $('tgChannels').value, keywords: $('tgKeywords').value,
     exclude: $('tgExclude').value, maxPrice: $('tgMaxPrice').value.trim(), interval: $('tgInterval').value, action,
+    payback: $('tgPayback').checked,
   }), 8000);
 });
 $('tgTest').addEventListener('click', async () => {

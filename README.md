@@ -40,6 +40,9 @@ z. B. `PirateDeals` und `PirateDealsAngebote` (voreingestellt; derselbe Deal wir
 - Bei Treffer: nur Alarm, zusätzlich auf die Überwachungsliste (Zielpreis = Höchstpreis bzw. Deal-Preis) oder
   zusätzlich automatisch in den Warenkorb. Kein Auto-Kauf direkt aus Telegram.
 - Beim ersten Abruf merkt sich der Bot nur den Stand (keine Alarmflut); gelesen wird im Dauerbetrieb.
+- Links immer **ohne Partner-Tag** (Amazon → `amazon.de/dp/ASIN`, sonst ohne Tracking-Parameter).
+- **Über Payback öffnen** (Amazon, MediaMarkt, BAUR): PC – Bot-Browser öffnet die Payback-Shopseite, drückt „Jetzt shoppen“
+  und lädt danach das Produkt; Handy – Payback-App, die Payback-Automatik leitet weiter und öffnet danach das Produkt.
 
 ## Funktionen
 - Produkte per Amazon-Link oder ASIN, optional mit Zielpreis

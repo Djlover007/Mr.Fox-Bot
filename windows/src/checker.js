@@ -123,7 +123,10 @@ function notifyUser(title, text, links) {
   try {
     if (Notification.isSupported()) {
       const n = new Notification({ title, body: text.slice(0, 250), icon: B.ICON });
-      n.on('click', () => { if (links && links.page) WebWin.open(links.page); });
+      n.on('click', () => {
+        if (links && links.page && links.payback) WebWin.openViaPayback(links.payback, links.page);
+        else if (links && links.page) WebWin.open(links.page);
+      });
       n.show();
     }
   } catch (e) { /* egal */ }
@@ -318,7 +321,10 @@ async function telegramDeal(d) {
       }
     }
   }
-  const url = d.resolved || d.link;
+  // saubere Produktadresse ohne Partner-Tag; Payback-Partner (Amazon, MediaMarkt, BAUR) über Payback öffnen
+  const url = require('./telegram').cleanLink(d.resolved || d.link, t);
+  const pb = Store.setting('tgPayback') !== false && t && Payback.supports(t.shop) ? t.shop : null;
+  if (pb) lines.push('💳 Öffnen über Payback (°Punkte)');
   // Fußzeilen des Kanals (nur Links/Domains) weglassen
   const body = String(d.post.text || '').split('\n')
     .filter((l) => l.replace(/https?:\/\/\S+|[\w.äöüß-]+\.(deals|de|com|me|org|net|to|eu|ly)\b(\/\S*)?/gi, '').replace(/[|•·\-–\s]/g, '').length >= 3)
@@ -326,9 +332,9 @@ async function telegramDeal(d) {
   const msg = `📣 Telegram @${d.channel}${d.price != null ? ' · ' + money(d.price) : ''}\n${body}` + (lines.length ? '\n' + lines.join('\n') : '');
   const ws = t && t.shop !== 'amazon' ? Shops.byKey(t.shop) : null;
   const cart = t && t.shop === 'amazon' ? A.cartUrl(t.asin, null) : url;
-  notifyUser('📣 ' + d.title, msg, { page: url, cart, checkout: ws ? ws.cartUrl : A.checkoutUrl() });
-  if (Store.setting('openOnAlert')) WebWin.open(url);
-  await sendDiscord(Store.setting('webhook'), `**${d.title}**\n${msg}\n<${url}>\nPost: <https://t.me/${d.post.post}>`);
+  notifyUser('📣 ' + d.title, msg, { page: url, cart, checkout: ws ? ws.cartUrl : A.checkoutUrl(), payback: pb });
+  if (Store.setting('openOnAlert')) { if (pb) WebWin.openViaPayback(pb, url); else WebWin.open(url); }
+  await sendDiscord(Store.setting('webhook'), `**${d.title}**\n${msg}\n<${url}>` + (pb ? `\n💳 Payback: <${Payback.PARTNERS[pb].page}>` : ''));
   if (addedId) checkOne(addedId).catch(() => {});
 }
 

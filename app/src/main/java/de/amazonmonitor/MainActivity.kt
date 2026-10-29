@@ -498,7 +498,13 @@ class MainActivity : AppCompatActivity() {
             key to RadioButton(this).apply { id = View.generateViewId(); text = t; textSize = 13f }.also { tgGroup.addView(it) }
         }
         tgActions.firstOrNull { it.first == Store.tgAction(this) }?.second?.isChecked = true
-        for (v in listOf(cbTg, inTgCh, inTgKw, inTgEx, inTgMax, inTgInt, tgGroup)) root.addView(v)
+        val cbTgPb = CheckBox(this).apply {
+            text = "Treffer bei Amazon, MediaMarkt und BAUR über Payback öffnen (Payback-App → Shop → Produkt, für °Punkte; " +
+                "mit Payback-Automatik öffnet sich das Produkt danach von selbst). Links immer ohne Partner-Tag."
+            textSize = 13f
+            isChecked = Store.tgPayback(this@MainActivity)
+        }
+        for (v in listOf(cbTg, inTgCh, inTgKw, inTgEx, inTgMax, inTgInt, tgGroup, cbTgPb)) root.addView(v)
         fun saveTg() {
             val action = tgActions.firstOrNull { it.second.isChecked }?.first ?: "alert"
             val chans = inTgCh.text.toString().split(Regex("[\\s,;]+")).map { TelegramDeals.channelName(it) }.filter { it.isNotEmpty() }
@@ -506,6 +512,7 @@ class MainActivity : AppCompatActivity() {
                 this, cbTg.isChecked, chans.joinToString(", "), inTgKw.text.toString().trim(), inTgEx.text.toString().trim(),
                 inTgMax.text.toString().trim(), action, inTgInt.text.toString().toIntOrNull() ?: 1
             )
+            Store.saveTgPayback(this, cbTgPb.isChecked)
             toast(
                 "Telegram gespeichert." + when {
                     cbTg.isChecked && !BotService.alive -> " Gelesen wird nur im Dauerbetrieb – oben starten."

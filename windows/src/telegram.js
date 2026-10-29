@@ -140,6 +140,31 @@ function target(url) {
 
 const LINK_IN_BODY = /https?:\/\/(?:www\.)?(?:amazon\.de\/[^"'\s<>]*?(?:dp|gp\/product)\/[A-Z0-9]{10}[^"'\s<>]*|amzn\.(?:to|eu)\/[^"'\s<>]+|mediamarkt\.de\/de\/product\/[^"'\s<>]+|baur\.de\/p\/[^"'\s<>]+|mueller\.de\/p\/[^"'\s<>]+)/i;
 
+/** Partner-/Tracking-Parameter, die aus Links entfernt werden. */
+const TRACK = /^(tag|ascsubtag|linkcode|linkid|camp|creative|creativeasin|ref|ref_|th|psc|utm_.*|awc|affid|aff_?id|affiliate|aff|partner|partnerid|subid|sub_?id|clickref|irclickid|gclid|fbclid|wt_mc|wt\.mc_id|emid|cjevent|ranmid|ransiteid|siteid|sc_?cid|cid|pirate.*|source|campaign|medium)$/i;
+
+/**
+ * Saubere Produktadresse ohne Partner-Tag: Amazon → https://www.amazon.de/dp/ASIN,
+ * Müller/MediaMarkt/BAUR → erkannte Produktadresse, sonst ohne Tracking-Parameter.
+ */
+function cleanLink(url, t) {
+  if (!url) return url;
+  if (t && t.shop === 'amazon') {
+    let h = 'www.' + Store.setting('domain');
+    try { const u = new URL(url); if (/amazon\./i.test(u.hostname)) h = u.hostname; } catch (e) { /* Standard */ }
+    return `https://${h}/dp/${t.asin}`;
+  }
+  if (t && t.url) return t.url;
+  try {
+    const u = new URL(url);
+    for (const k of [...u.searchParams.keys()]) if (TRACK.test(k)) u.searchParams.delete(k);
+    u.hash = '';
+    return u.toString();
+  } catch (e) {
+    return url;
+  }
+}
+
 /** Deal-Link (Weiterleitung) bis zur Shopseite auflösen. Gibt die End-Adresse zurück (oder den Link selbst). */
 async function resolve(url, depth = 0) {
   if (target(url) || depth > 2) return url;
@@ -231,10 +256,11 @@ async function test(n = 5) {
       const mm = matches(p, c);
       let resolved = null;
       if (mm.ok) resolved = await resolve(dealLink(p));
-      out.push({ channel: ch, id: p.id, title: mm.ok ? displayName(p, resolved) : (name(p) || '(kein Name im Beitrag)'), snippet: snippet(p), price: postPrice(p), ok: mm.ok, why: mm.why, resolved, host: host(resolved), target: resolved ? target(resolved) : null });
+      const tg = resolved ? target(resolved) : null;
+      out.push({ channel: ch, id: p.id, title: mm.ok ? displayName(p, resolved) : (name(p) || '(kein Name im Beitrag)'), snippet: snippet(p), price: postPrice(p), ok: mm.ok, why: mm.why, resolved: resolved ? cleanLink(resolved, tg) : null, host: host(resolved), target: tg });
     }
   }
   return out;
 }
 
-module.exports = { poll, test, channels, channelName, matches, dealPrice, title, name, displayName, resolve, target, fetchChannel, PARSE_JS };
+module.exports = { cleanLink, poll, test, channels, channelName, matches, dealPrice, title, name, displayName, resolve, target, fetchChannel, PARSE_JS };

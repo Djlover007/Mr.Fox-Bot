@@ -127,7 +127,11 @@ function pirat(u) {
 function handler(req) {
   const u = new URL(req.url);
   let r;
-  if (u.hostname === 't.me') r = telegram(u);
+  if (u.hostname === 'www.payback.de') {
+    r = page('PAYBACK Amazon', `<div id="cookie"><button onclick="document.getElementById('cookie').remove()">Alle akzeptieren</button></div>
+      <h1>Amazon</h1><a href="https://www.amazon.de/?tag=payback-21">Jetzt shoppen</a>`);
+  } else if (u.hostname === 'www.amazon.de') r = page('Amazon.de', '<h1>Amazon über Payback</h1>');
+  else if (u.hostname === 't.me') r = telegram(u);
   else if (u.hostname === 's.pirat.deals') r = pirat(u);
   else if (u.hostname === 'www.mock-amazon.test') r = amazon(u);
   else if (u.hostname === 'www.mock-shop.test') r = shop(u);
@@ -234,6 +238,16 @@ async function run() {
     check('Telegram: Name aus Link-Vorschau, Preis ohne €', p5 && p5.name === 'Fuchs Gamepad Konsole Edition' && p5.target === 24.99, JSON.stringify(p5));
     check('Telegram: Weiterleitung (302) aufgelöst + auf Liste', p3 && p3.name === 'Mr.Fox Konsole Pro' && p3.target === 1199, JSON.stringify(p3));
     check('Telegram: JS-Weiterleitung aufgelöst + auf Liste', p2 && p2.target === 49.99, JSON.stringify(p2));
+    const al3 = Store.alerts().find((a) => /Konsole Pro/.test(a.title));
+    check('Telegram: Link ohne Partner-Tag + Payback', al3 && al3.links.page === 'https://www.mock-amazon.test/dp/B000TEST03' && al3.links.payback === 'amazon', JSON.stringify(al3 && al3.links));
+    const cl = Telegram.cleanLink('https://www.otto.de/p/fuchs-123?utm_source=pirate&ref=deal&farbe=rot#x', null);
+    check('Telegram: Tracking-Parameter entfernt', cl === 'https://www.otto.de/p/fuchs-123?farbe=rot', cl);
+    const WebWin = require('./webwin');
+    const pw = WebWin.openViaPayback('amazon', 'https://www.mock-amazon.test/dp/B000TEST01');
+    let pu = '';
+    for (let i = 0; i < 30 && !pu.includes('mock-amazon.test/dp/'); i++) { await B.sleep(1000); pu = pw.isDestroyed() ? '' : pw.webContents.getURL(); }
+    check('Payback: erst Payback-Seite, dann Produkt', pu === 'https://www.mock-amazon.test/dp/B000TEST01', pu + ' | ' + (pw.isDestroyed() ? '' : pw.getTitle()));
+    if (!pw.isDestroyed()) pw.destroy();
     check('Telegram: Alarm erzeugt', Store.alerts().some((a) => /📣 Telegram @MockDeals/.test(a.text) && /FOX10/.test(a.text)), (Store.alerts()[0] || {}).text);
     // gleicher Deal in einem zweiten Kanal (weitergeleitet) → kein zweiter Alarm
     Store.setSettings({ tgChannels: 'MockDeals, MockDeals2' });

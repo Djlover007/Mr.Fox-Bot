@@ -171,6 +171,38 @@ object TelegramDeals {
         return if (link.kind == Product.KIND_PRODUCT) Target(ws.key, link.id, link.url) else null
     }
 
+    /** Partner-/Tracking-Parameter, die aus Links entfernt werden. */
+    private val TRACK = Regex(
+        "^(tag|ascsubtag|linkcode|linkid|camp|creative|creativeasin|ref|ref_|th|psc|utm_.*|awc|affid|aff_?id|affiliate|aff|" +
+            "partner|partnerid|subid|sub_?id|clickref|irclickid|gclid|fbclid|wt_mc|wt\\.mc_id|emid|cjevent|ranmid|ransiteid|siteid|" +
+            "sc_?cid|cid|pirate.*|source|campaign|medium)$",
+        RegexOption.IGNORE_CASE
+    )
+
+    /**
+     * Saubere Produktadresse ohne Partner-Tag: Amazon → https://www.amazon.de/dp/ASIN,
+     * Müller/MediaMarkt/BAUR → erkannte Produktadresse, sonst ohne Tracking-Parameter.
+     */
+    fun cleanLink(url: String, t: Target?): String {
+        if (t != null && t.shop == Product.SHOP_AMAZON) {
+            val h = try { URL(url).host } catch (e: Exception) { null }
+            val host = if (h != null && h.contains("amazon.", true)) h else "www.amazon.de"
+            return "https://$host/dp/${t.id}"
+        }
+        if (t != null) return t.url
+        return try {
+            val u = android.net.Uri.parse(url)
+            val b = u.buildUpon().clearQuery().fragment(null)
+            for (k in u.queryParameterNames) {
+                if (TRACK.matches(k)) continue
+                for (v in u.getQueryParameters(k)) b.appendQueryParameter(k, v)
+            }
+            b.build().toString()
+        } catch (e: Exception) {
+            url
+        }
+    }
+
     /** Deal-Link (Weiterleitung) bis zur Shopseite auflösen. */
     suspend fun resolve(ctx: Context, url: String): String {
         var u = url
@@ -318,6 +350,10 @@ object TelegramDeals {
                 }
             }
         }
+        // saubere Produktadresse ohne Partner-Tag; Payback-Partner (Amazon, MediaMarkt, BAUR) über Payback öffnen
+        val url = cleanLink(resolved, t)
+        val pb = if (Store.tgPayback(ctx) && t != null && Payback.supports(t.shop)) t.shop else null
+        if (pb != null) lines += "💳 Antippen öffnet über Payback (°Punkte)"
         // Fußzeilen des Kanals (nur Links/Domains) weglassen
         val domainRe = Regex("https?://\\S+|[\\wäöüß.-]+\\.(deals|de|com|me|org|net|to|eu|ly)\\b(/\\S*)?", RegexOption.IGNORE_CASE)
         val body = p.text.split('\n')
@@ -325,10 +361,26 @@ object TelegramDeals {
             .take(8).joinToString("\n").take(500)
         val msg = "📣 Telegram @$channel" + (price?.let { " · ${money(it)}" } ?: "") + "\n$body" +
             if (lines.isNotEmpty()) "\n" + lines.joinToString("\n") else ""
-        Checker.notifyResult(ctx, "📣 $name", msg, resolved)
-        if (Store.openOnAlert(ctx)) Links.openFromBackground(ctx, resolved)
+        val cart = if (t != null && t.shop == Product.SHOP_AMAZON) Checker.cartUrl(Store.domain(ctx), t.id) else url
+        val checkout = WebShops.byKey(t?.shop ?: "")?.cartUrl ?: Checker.checkoutUrl(Store.domain(ctx))
+        Checker.notifyUser(
+            ctx, "📣 $name", msg, url, cart, checkout,
+            payback = pb?.let { it to name }, paybackUrl = url, tapViaPayback = pb != null,
+        )
+        if (Store.openOnAlert(ctx)) {
+            withContext(Dispatchers.Main) {
+                if (pb != null) {
+                    if (Links.canOpenFromBackground(ctx)) Payback.open(ctx, pb, name, url)
+                } else {
+                    Links.openFromBackground(ctx, url)
+                }
+            }
+        }
         withContext(Dispatchers.IO) {
-            Checker.sendDiscord(Store.webhook(ctx), "**$name**\n$msg\n<$resolved>\nPost: <https://t.me/${p.post}>")
+            Checker.sendDiscord(
+                Store.webhook(ctx),
+                "**$name**\n$msg\n<$url>" + (pb?.let { "\n💳 Payback: <${Payback.shopPage(it)}>" } ?: "")
+            )
         }
         addedId?.let { Checker.checkOne(ctx, it) }
     }
@@ -347,6 +399,7 @@ object TelegramDeals {
                     val t = target(r)
                     tgt = if (t != null) " → ${if (t.shop == Product.SHOP_AMAZON) "Amazon ${t.id}" else "${t.shop} ${t.id}"}"
                     else " → anderer Shop (${host(r) ?: "?"})"
+                    tgt += "\n   Link: " + cleanLink(r, t)
                 }
                 val price = (dealPrice(p.text) ?: dealPrice(p.previewDesc))?.let { " – ${money(it)}" } ?: ""
                 val nm = if (ok) displayName(p, r) else name(p) ?: "(kein Name im Beitrag)"
