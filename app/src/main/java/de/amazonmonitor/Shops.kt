@@ -47,13 +47,22 @@ class WebShop(
     val soldWords: List<String>,
     /** Wörter (klein), die in einer Kachel „verfügbar“ bedeuten. */
     val availWords: List<String>,
+    /** URL-Parameter, die zum Produkt gehören und erhalten bleiben (z. B. BAUR „sku“ = Variante). */
+    val keepParams: List<String> = emptyList(),
 ) {
     fun matches(input: String): Boolean = productRe.containsMatchIn(input) || categoryRe.containsMatchIn(input)
 
     fun parse(input: String): WebShops.Link? {
         val s = input.trim()
         productRe.find(s)?.let {
-            return WebShops.Link(Product.KIND_PRODUCT, "$idPrefix-${it.groupValues[2].uppercase()}", productUrl(it.groupValues[1]))
+            // Varianten-Parameter (z. B. sku) übernehmen: gehören zur Kennung und zum Link
+            val kept = keepParams.mapNotNull { k ->
+                Regex("[?&]" + Regex.escape(k) + "=([^&#\\s]+)").find(s)?.let { m -> k to m.groupValues[1] }
+            }
+            val id = "$idPrefix-${it.groupValues[2].uppercase()}" + kept.joinToString("") { (_, v) -> "-$v" }
+            val url = productUrl(it.groupValues[1]) +
+                if (kept.isEmpty()) "" else "?" + kept.joinToString("&") { (k, v) -> "$k=$v" }
+            return WebShops.Link(Product.KIND_PRODUCT, id, url)
         }
         categoryRe.find(s)?.let {
             val path = it.groupValues[1].trimEnd('/')
@@ -104,9 +113,10 @@ object WebShops {
         cartUrl = "https://www.baur.de/warenkorb",
         accountUrl = "https://www.baur.de/mein-konto/uebersicht",
         credPrefix = "baur", idPrefix = "BAUR",
-        // /p/<name>-<Artikelnummer>/ (ggf. mit #item… oder ?…)
-        productRe = Regex("""baur\.de/p/([^\s?#]*?-(\d{6,12}))/?"""),
-        productUrl = { "https://www.baur.de/p/$it/" },
+        // /p/AKLBB2161998740?sku=6345532920-0-2161998740 (oder /p/<name>-<Nummer>/)
+        productRe = Regex("""baur\.de/p/((?:[^\s?#/]*?-)?([A-Za-z]{0,8}\d{6,}))/?(?:[?#\s]|$)"""),
+        productUrl = { "https://www.baur.de/p/$it" },
+        keepParams = listOf("sku"),
         // Kategorien: /bereich/unterbereich/ (alles außer Produkt-, Konto- und Warenkorbseiten)
         categoryRe = Regex("""baur\.de/((?!p/|warenkorb|mein-konto|merkzettel|service-hilfe)[a-z0-9-]+(?:/[a-z0-9-]+)*)/?(?:[?#\s]|$)"""),
         categoryUrl = { "https://www.baur.de/$it/" },

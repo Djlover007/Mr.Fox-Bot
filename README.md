@@ -68,7 +68,7 @@ Funktioniert wie Müller (gleicher Mechanismus, siehe oben):
 
 ## BAUR (baur.de)
 Funktioniert wie Müller/MediaMarkt:
-- **Produkt:** Link `baur.de/p/…-1234567890/`
+- **Produkt:** Link wie `baur.de/p/AKLBB2161998740?sku=…` (die Variante aus „sku“ wird übernommen)
 - **Kategorie:** z. B. `baur.de/multimedia/spielkonsolen/` (neu / wieder lieferbar / unter Zielpreis)
 - Eigener **BAUR-Zugang** für Auto-Kauf; Warenkorb `/warenkorb`. Auch hier bestellt der Auto-Kauf den
   ganzen BAUR-Warenkorb. BAUR ist Payback-Partner („💳 Über Payback kaufen“).
