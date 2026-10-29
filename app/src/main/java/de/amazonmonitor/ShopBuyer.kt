@@ -76,7 +76,7 @@ return 'none';})()"""
 var pw=document.querySelector('input[type=password]');
 var em=document.querySelector('#email,input[name=login_email],input[type=email]');
 var b=btn(/^(jetzt zahlen|zahlung abschließen|zustimmen und weiter|zustimmen und zahlen|weiter zur überprüfung|weiter|jetzt kaufen|kaufen|pay now|continue|complete purchase|agree (&|and) continue)$/i);
-if(!b&&((pw&&vis(pw))||(em&&vis(em))))return 'login';
+if((pw&&vis(pw))||(em&&vis(em)&&!em.value))return 'login';
 if(b){b.click();return 'clicked:'+txt(b);}
 return 'wait';})()"""
 
