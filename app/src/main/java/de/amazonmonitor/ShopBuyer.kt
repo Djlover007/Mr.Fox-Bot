@@ -32,7 +32,12 @@ object ShopBuyer {
         if (logLines.size > 60) logLines.removeAt(0)
     }
 
-    fun logText(): String = synchronized(logLines) { logLines.joinToString("\n") }
+    /** Seitenberichte, die die App selbst unterwegs aufnimmt (z. B. Zahlungsseite ohne PayPal). */
+    private val snapshots = ArrayList<String>()
+
+    fun logText(): String = synchronized(logLines) {
+        logLines.joinToString("\n") + snapshots.joinToString("") { "\n\n=== Automatisch aufgenommene Seite ===\n$it" }
+    }
 
     private enum class Mode { CART, BUY, DRY }
 
@@ -88,7 +93,15 @@ if(!pp){
   if(clk&&ct.length<bl){best=c;bl=ct.length;}}
  if(best){var sel=function(e){for(var u=0;u<4&&e;u++){if(e.getAttribute('aria-checked')==='true'||e.getAttribute('aria-selected')==='true'||e.getAttribute('aria-pressed')==='true'||/(^|[-_ ])(selected|active|checked)/i.test(e.getAttribute('class')||''))return true;e=e.parentElement;}return false;};
   if(sel(best))return 'already';best.click();return 'clicked-tile:'+txt(best).slice(0,30);}
- return 'none|'+list.join(' · ');}
+ // PayPal versteckt (zugeklappter Bereich)? → den zugehörigen Aufklapp-Knopf drücken
+ var hid=[].filter.call(document.querySelectorAll('body *:not(script):not(style)'),function(e){return e.children.length<3&&/paypal/i.test(e.textContent+' '+(e.alt||''))&&!/express/i.test(e.textContent)&&!e.closest('footer,header,nav,script')&&!vis(e);});
+ if(hid.length){var tg=document.querySelectorAll('[aria-expanded=false],summary');
+  for(var g=0;g<tg.length;g++){var x=tg[g];if(!vis(x))continue;var ctl=x.getAttribute('aria-controls');var reg=ctl?document.getElementById(ctl):(x.tagName==='SUMMARY'?x.parentElement:x.parentElement);
+   if(reg&&/paypal/i.test(reg.textContent)){x.click();return 'expand:'+txt(x).slice(0,30);}}}
+ var more=btn(/weitere zahlungsarten|andere zahlungsart|alle zahlungsarten|mehr zahlungsarten|zahlungsart wechseln|sofort bezahlen|direkt bezahlen|online bezahlen/i);
+ if(more&&!/paypal express/i.test(txt(more))&&(!more.getAttribute('aria-expanded')||more.getAttribute('aria-expanded')==='false'))
+  {more.click();return 'expand:'+txt(more).slice(0,30);}
+ return 'none|'+list.join(' · ')+(hid.length?' (PayPal versteckt: '+hid.length+')':'');}
 if(on(pp))return 'already';
 // wie ein Finger: zuerst die Beschriftung antippen, sonst das Feld selbst
 var l=(pp.id&&document.querySelector('label[for="'+pp.id+'"]'))||pp.closest('label');
@@ -277,7 +290,17 @@ function paySec(){var head=/^(zahlungsart|zahlungsmethode|bezahlart|bezahlmethod
             Mode.BUY -> "${shop.label}-Auto-Kauf: "
             Mode.CART -> "${shop.label}-Warenkorb: "
         }
-        synchronized(logLines) { logLines.clear() }
+        synchronized(logLines) { logLines.clear(); snapshots.clear() }
+        val snapped = HashSet<String>()
+        // Seite ohne PayPal-Auswahl einmal komplett beschreiben (hilft bei der Fehlersuche)
+        fun snapshot() {
+            val key = (web.title ?: "") + "|" + (web.url ?: "").substringBefore('?')
+            if (snapped.size >= 3 || !snapped.add(key)) return
+            web.evaluateJavascript(WatchActivity.REPORT_JS) { raw ->
+                val t = try { org.json.JSONTokener(raw ?: "null").nextValue() as? String } catch (e: Exception) { null }
+                if (t != null) synchronized(logLines) { snapshots.add(t) }
+            }
+        }
         log(prefix + url)
         var lastStatus = ""
         fun status(s: String) {
@@ -304,6 +327,7 @@ function paySec(){var head=/^(zahlungsart|zahlungsmethode|bezahlart|bezahlmethod
         var paymentInfo = ""
         var paymentOptions = ""
         var lastStep = ""
+        var expands = 0
         var payWait = 0 // nach Klick auf den Stift: so viele Runden nur auf die PayPal-Auswahl warten
 
         fun release() {
@@ -453,7 +477,13 @@ function paySec(){var head=/^(zahlungsart|zahlungsmethode|bezahlart|bezahlmethod
                             web.evaluateJavascript(PAYPAL_SELECT_JS) { pp ->
                                 if (!cont.isActive) return@evaluateJavascript
                                 log("Warte auf Zahlungsauswahl (${payWait}): " + (pp ?: ""))
+                                if (pp?.startsWith("\"none") == true && payWait <= 6) snapshot()
                                 when {
+                                    pp?.contains("expand") == true && expands < 3 -> {
+                                        expands++
+                                        status("Öffne weitere Zahlungsarten …")
+                                        again()
+                                    }
                                     pp?.contains("clicked") == true -> {
                                         payWait = 0
                                         paypalClicks++
@@ -480,7 +510,13 @@ function paySec(){var head=/^(zahlungsart|zahlungsmethode|bezahlart|bezahlmethod
                             web.evaluateJavascript(PAYPAL_SELECT_JS) { pp ->
                                 if (!cont.isActive) return@evaluateJavascript
                                 log("PayPal-Suche: " + (pp ?: ""))
+                                if (pp?.startsWith("\"none") == true && (web.title ?: "").contains("zahl", true)) snapshot()
                                 when {
+                                    pp?.contains("expand") == true && expands < 3 -> {
+                                        expands++
+                                        status("Öffne weitere Zahlungsarten …")
+                                        again()
+                                    }
                                     pp?.contains("clicked") == true -> {
                                         paypalClicks++
                                         status("Wähle Zahlungsart PayPal …")
