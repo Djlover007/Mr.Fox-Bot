@@ -1,10 +1,34 @@
-# Mr.Fox Bot (Android)
+# Mr.Fox Bot (Android + Windows)
 
 Überwacht **Amazon**, **Müller** (mueller.de), **MediaMarkt** (mediamarkt.de) und **BAUR** (baur.de).
 
 Android-App, die Preis und Verfügbarkeit von Amazon-Produkten im Hintergrund überwacht und dich
 per Benachrichtigung und optional per Discord informiert (Zielpreis erreicht, Preis um X % gefallen,
 wieder verfügbar).
+
+## Windows-Programm
+
+Im Ordner `windows/` liegt der Bot als Windows-Programm (Electron, mit eingebautem Chrome). Jedes Release
+enthält neben der `app-debug.apk` auch `MrFoxBot-Setup-<Version>.exe`.
+
+- **Gleiche Funktionen wie die App:** Amazon (alle 2 Min.), Müller, MediaMarkt, BAUR (Produkte und Kategorien),
+  Zielpreis/Preisfall/Wieder verfügbar, OfferListingId (festhalten, Discord), automatischer Warenkorb, Auto-Kauf
+  mit Probelauf, Geräteschutz ablehnen, PayPal bevorzugen, Ratenzahlungs-Sperre, Seitenbericht.
+- **Bot-Browser:** alle Abläufe nutzen eine gemeinsame, dauerhafte Sitzung. Einmal bei Amazon, den Shops, PayPal
+  und Payback „Im Bot-Browser anmelden“ (2FA von Hand), danach bleibt der Bot angemeldet.
+- **Läuft im Hintergrund:** Fenster schließen = Bot läuft weiter (Fuchs in der Taskleiste). Optional mit Windows
+  starten und den Energiesparmodus verhindern.
+- **Alarme:** Windows-Benachrichtigung, Alarm-Verlauf mit Links und Discord.
+- **PAYBACK am PC:** Payback-Webseite im Bot-Browser; optional startet der Bot Auto-Kauf/Probelauf über die
+  Payback-Shopseite (Weiterleitung zum Shop), sonst ohne °Punkte.
+- **Passwörter** werden mit dem Windows-Datenschutz (DPAPI) verschlüsselt gespeichert.
+- **Produkte übertragen:** „📦 Export/Import“ (Datei `mrfox-produkte.json`) – gleiches Format wie in der Android-App.
+  Beim Import wird Auto-Kauf ausgeschaltet, damit Handy und PC nicht doppelt bestellen.
+
+Installation: `MrFoxBot-Setup-….exe` herunterladen und starten. Windows SmartScreen meldet „Unbekannter Herausgeber“
+(das Programm ist nicht kostenpflichtig signiert) → „Weitere Informationen“ → „Trotzdem ausführen“.
+
+Entwicklung: `cd windows && npm install && npm start`; Selbsttest: `npx electron . --selftest`.
 
 ## Funktionen
 - Produkte per Amazon-Link oder ASIN, optional mit Zielpreis

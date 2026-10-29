@@ -1,0 +1,282 @@
+'use strict';
+/**
+ * Prüfungen und Alarme (wie Checker in CheckWorker.kt der Android-App): Preis/Verfügbarkeit,
+ * Zielpreis, Preisfall, OfferListingId, Kategorien, Auto-Kauf, automatischer Warenkorb,
+ * Windows-Benachrichtigung, Discord und Alarm-Verlauf.
+ */
+const { Notification, net } = require('electron');
+const B = require('./browser');
+const Store = require('./store');
+const Shops = require('./shops');
+const Scraper = require('./scraper');
+const A = require('./amazon');
+const ShopBuyer = require('./shopbuyer');
+const Payback = require('./payback');
+const WebWin = require('./webwin');
+
+const { money } = A;
+
+function webShop(p) { return Shops.byKey(p.shop); }
+
+/** Prüft alle (passenden) Produkte nacheinander. Gibt true zurück, wenn ein Shop blockiert hat. */
+async function checkAll(which = () => true) {
+  const domain = Store.setting('domain');
+  const dropPct = Number(Store.setting('drop')) || 0;
+  const list = Store.products().filter((p) => which(p) && Store.isActive(p));
+  if (!list.length) return false;
+  const problems = [];
+  const blocked = new Set();
+  for (let i = 0; i < list.length; i++) {
+    const p = list[i];
+    if (blocked.has(p.shop)) continue;
+    try {
+      await checkProduct(domain, dropPct, p);
+    } catch (e) {
+      if (e instanceof Scraper.BlockedError) {
+        blocked.add(p.shop);
+        const ws = webShop(p);
+        problems.push(ws ? `${ws.label}: Bot-/Sicherheitsprüfung nicht bestanden` : 'Amazon: blockiert (Captcha)');
+      } else {
+        problems.push(`Fehler bei ${p.name}: ${e.message}`);
+      }
+    }
+    if (i < list.length - 1) await B.sleep(3000 + Math.random() * 5000);
+  }
+  Store.setStatus(problems.length ? problems.join(' · ') : 'OK');
+  return blocked.size > 0;
+}
+
+async function checkProduct(domain, dropPct, p) {
+  const ws = webShop(p);
+  if (ws && Store.isCategory(p)) return handleCategory(ws, p, await Shops.fetchCategory(ws, p.url));
+  if (ws) return handle(domain, dropPct, p.asin, await Shops.fetchProduct(ws, p.url));
+  return handle(domain, dropPct, p.asin, await Scraper.fetchAmazon(B.ses(), domain, p.asin));
+}
+
+/** Einzelnes Produkt sofort prüfen. Gibt null bei Erfolg zurück, sonst eine Fehlermeldung. */
+async function checkOne(id) {
+  try {
+    const p = Store.get(id);
+    if (!p) throw new Error('Produkt fehlt');
+    await checkProduct(Store.setting('domain'), Number(Store.setting('drop')) || 0, p);
+    return null;
+  } catch (e) {
+    if (e instanceof Scraper.BlockedError) return `Blockiert (${e.message}) – später „Jetzt prüfen“`;
+    return e.message || 'Fehler';
+  }
+}
+
+function offerInfo(p) {
+  const ws = webShop(p);
+  if (ws) {
+    let s = `Shop: ${ws.label}`;
+    if (p.lastPrice != null) s += '\nPreis: ' + money(p.lastPrice);
+    if (p.target != null) s += '\nZielpreis: ' + money(p.target);
+    s += '\nVerfügbar: ' + (p.available ? 'ja' : 'nein');
+    s += `\nProdukt: <${p.url}>\nWarenkorb: <${ws.cartUrl}>`;
+    return s;
+  }
+  const offer = Store.cartOffer(p);
+  let s = 'ASIN: ' + p.asin;
+  s += '\nOfferListingId: ' + (offer ? '`' + offer + '`' : 'nicht gefunden');
+  if (p.pinnedOffer) s += ' 📌 festgehalten';
+  if (p.seller) s += '\nVerkauf: ' + p.seller;
+  if (p.lastPrice != null) s += '\nPreis: ' + money(p.lastPrice);
+  if (p.target != null) s += '\nZielpreis: ' + money(p.target);
+  s += `\nProdukt: <https://www.${Store.setting('domain')}/dp/${p.asin}>`;
+  s += `\nIn den Warenkorb: <${A.cartUrl(p.asin, offer)}>`;
+  return s;
+}
+
+async function sendDiscord(hook, text) {
+  if (!hook || !String(hook).trim()) return false;
+  try {
+    const r = await net.fetch(String(hook).trim(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'MrFoxBot/5' },
+      body: JSON.stringify({ content: String(text).slice(0, 1990) }),
+    });
+    return r.status >= 200 && r.status < 300;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function sendAllOffers() {
+  const hook = Store.setting('webhook');
+  const items = Store.products();
+  if (!hook || !items.length) return false;
+  let ok = true;
+  let buf = '🦊 **Mr.Fox Bot – OfferListingIds aller Produkte**\n';
+  for (const p of items) {
+    const block = `\n**${p.name}**\n${offerInfo(p)}\n`;
+    if (buf.length + block.length > 1900) { ok = (await sendDiscord(hook, buf)) && ok; buf = ''; }
+    buf += block;
+  }
+  if (buf.trim()) ok = (await sendDiscord(hook, buf)) && ok;
+  return ok;
+}
+
+/** Windows-Benachrichtigung + Eintrag im Alarm-Verlauf. Klick öffnet die Seite. */
+function notifyUser(title, text, links) {
+  Store.addAlert({ title, text, links });
+  try {
+    if (Notification.isSupported()) {
+      const n = new Notification({ title, body: text.slice(0, 250), icon: B.ICON });
+      n.on('click', () => { if (links && links.page) WebWin.open(links.page); });
+      n.show();
+    }
+  } catch (e) { /* egal */ }
+}
+
+/** Payback-Weiterleitung vor dem Kauf (wenn eingeschaltet), Ergebnis landet in note. */
+function paybackStarter(shopKey, note) {
+  if (!Store.setting('paybackAutoBuy') || !Store.payback(shopKey) || !Payback.supports(shopKey)) return null;
+  return async (wc, status) => {
+    const r = await Payback.activate(wc, shopKey, status);
+    note.text = r.ok ? '💳 Über Payback gekauft (°Punkte)' : '💳 Ohne Payback-Punkte: ' + r.detail;
+  };
+}
+
+async function handle(domain, dropPct, id, r) {
+  const autoBuyOn = !!Store.setting('autoBuy');
+  let offerEvent = null;
+  const upd = Store.update(id, (p) => {
+    const prevOffer = p.offerId;
+    if (r.offerId == null) offerEvent = null;
+    else if (prevOffer == null) offerEvent = '🆕 OfferListingId gefunden';
+    else if (r.offerId !== prevOffer) offerEvent = '🔄 Neues Angebot in der Kaufbox';
+    const prevPrice = p.lastPrice;
+    const prevAvail = p.available;
+    const first = p.lastCheck === 0;
+    p.lastCheck = Date.now();
+    const nowAvail = r.available;
+    if (nowAvail != null) p.available = nowAvail;
+    if (r.offerId) p.offerId = r.offerId;
+    if (r.seller) p.seller = r.seller;
+    if (p.name === p.asin && r.title && r.title !== p.asin) p.name = String(r.title).slice(0, 80);
+
+    let text = null;
+    const price = r.price;
+    if (price != null) {
+      p.lastPrice = price;
+      p.minPrice = p.minPrice == null ? price : Math.min(p.minPrice, price);
+      const target = p.target;
+      if (target != null && price <= target && p.lastAlertPrice !== price) text = `Zielpreis erreicht: ${money(price)} (Ziel ${money(target)})`;
+      else if (dropPct > 0 && prevPrice != null && price <= prevPrice * (1 - dropPct / 100) && p.lastAlertPrice !== price) text = `Preis um mind. ${dropPct} % gefallen: ${money(prevPrice)} → ${money(price)}`;
+      else if (!first && !prevAvail && nowAvail === true) text = `Wieder verfügbar: ${money(price)}`;
+      if (text) p.lastAlertPrice = price;
+    }
+    const t = p.target;
+    const priceOk = autoBuyOn && p.autoBuy && nowAvail === true && price != null && t != null && price <= t;
+    const offerMismatch = priceOk && p.pinnedOffer != null && r.offerId !== p.pinnedOffer;
+    const buyNow = priceOk && !offerMismatch;
+    if (buyNow) {
+      p.autoBuy = false; // nur EIN Versuch
+      p.lastBuyAttempt = Date.now();
+      p.lastBuyResult = 'läuft …';
+      if (!text) { text = `Zielpreis erreicht: ${money(price)} (Ziel ${money(t)})`; p.lastAlertPrice = price; }
+    }
+    return { text, buyNow, offerMismatch };
+  });
+  if (!upd) return;
+  const { text: alert, buyNow, offerMismatch } = upd;
+  const hook = Store.setting('webhook');
+
+  if (offerEvent && !alert) {
+    const p = Store.get(id);
+    if (p) await sendDiscord(hook, `${offerEvent}\n**${p.name}**\n${offerInfo(p)}`);
+  }
+  if (!alert) return;
+
+  const product = Store.get(id);
+  const name = product ? product.name : r.title;
+  const ws = product ? webShop(product) : null;
+  const url = product ? Store.pageUrl(product) : `https://www.${domain}/dp/${id}`;
+  const cart = ws ? url : A.cartUrl(id, product ? Store.cartOffer(product) : null);
+  let message = alert;
+  if (offerMismatch) message += '\n⏸ Auto-Kauf wartet: in der Kaufbox liegt nicht das festgehaltene Angebot' + (r.seller ? ` (gerade: ${r.seller})` : '');
+  let openUrl = Store.setting('openOnAlert') ? url : null;
+
+  if (buyNow) {
+    const visible = !!Store.setting('watchBuy');
+    const note = { text: '' };
+    const shopKey = product ? product.shop : 'amazon';
+    const beforeStart = paybackStarter(shopKey, note);
+    let res;
+    try {
+      res = ws
+        ? await ShopBuyer.buy(ws, url, id, { dryRun: false, visible, beforeStart })
+        : await A.buy(id, { dryRun: false, visible, beforeStart });
+    } catch (e) {
+      res = { outcome: A.Outcome.FAILED, detail: e.message || 'Fehler' };
+    }
+    const line = A.describe(res) + (note.text ? '\n' + note.text : '');
+    Store.update(id, (p) => { p.lastBuyResult = line; });
+    message += '\n' + line;
+    if (openUrl) {
+      if (visible) openUrl = null;
+      else if (res.outcome === A.Outcome.ORDERED || res.outcome === A.Outcome.UNCLEAR) openUrl = ws ? ws.accountUrl : A.ordersUrl();
+    }
+  } else if (Store.setting('autoCart')) {
+    let res;
+    try {
+      res = ws ? await ShopBuyer.addToCart(ws, url, id) : await A.addToCart(id, product ? Store.cartOffer(product) : null);
+    } catch (e) {
+      res = { result: 'FAILED', detail: e.message || 'Fehler' };
+    }
+    if (res.result === 'OK') Store.update(id, (p) => { p.lastCartAdd = Date.now(); });
+    message += res.result === 'OK' ? '\n✅ Automatisch in den Warenkorb gelegt'
+      : res.result === 'NOT_LOGGED_IN' ? '\n⚠️ Nicht angemeldet: ' + res.detail
+        : `\n⚠️ Automatisch in den Warenkorb legen hat nicht geklappt (${res.detail}) – nutze den Link`;
+  }
+
+  const checkout = ws ? ws.cartUrl : A.checkoutUrl();
+  if (openUrl) WebWin.open(openUrl);
+  notifyUser(name, message, { page: url, cart, checkout });
+  const p2 = Store.get(id);
+  await sendDiscord(hook, `**${name}**\n${message}\n${p2 ? offerInfo(p2) : `Produkt: ${url}\nIn den Warenkorb: ${cart}`}\nZur Kasse: <${checkout}>`);
+}
+
+function handleCategory(shop, cat, items) {
+  if (!items.length) throw new Error('Keine Produkte in der Kategorie gefunden');
+  const lines = [];
+  Store.update(cat.asin, (p) => {
+    const first = p.lastCheck === 0;
+    let old = {};
+    try { old = JSON.parse(p.catState || '{}'); } catch (e) { old = {}; }
+    const now = {};
+    const target = p.target;
+    for (const it of items) {
+      const prev = old[it.url];
+      const prevAvail = prev ? !!prev.a : false;
+      const prevPrice = prev && prev.p != null ? Number(prev.p) : null;
+      const priceTxt = it.price != null ? money(it.price) : 'Preis ?';
+      if (!first) {
+        if (!prev && it.available) lines.push(`🆕 Neu & online verfügbar: ${it.name} – ${priceTxt}\n<${it.url}>`);
+        else if (!prev) lines.push(`🆕 Neu (noch ausverkauft): ${it.name} – ${priceTxt}`);
+        else if (!prevAvail && it.available) lines.push(`✅ Wieder online verfügbar: ${it.name} – ${priceTxt}\n<${it.url}>`);
+        else if (target != null && it.available && it.price != null && it.price <= target && (prevPrice == null || prevPrice > target)) lines.push(`💶 Unter ${money(target)}: ${it.name} – ${priceTxt}\n<${it.url}>`);
+      }
+      now[it.url] = { n: it.name, p: it.price, a: it.available };
+    }
+    p.catState = JSON.stringify(now);
+    p.lastCheck = Date.now();
+    p.available = items.some((x) => x.available);
+  });
+  if (!lines.length) return;
+  const text = lines.join('\n');
+  if (Store.setting('openOnAlert')) WebWin.open(cat.url);
+  notifyUser(cat.name, text, { page: cat.url, cart: cat.url, checkout: shop.cartUrl });
+  const hook = Store.setting('webhook');
+  (async () => {
+    let buf = `${shop.emoji} **${cat.name}** (${shop.label}-Kategorie)\n`;
+    for (const l of lines) {
+      if (buf.length + l.length > 1900) { await sendDiscord(hook, buf); buf = ''; }
+      buf += l + '\n';
+    }
+    await sendDiscord(hook, buf);
+  })();
+}
+
+module.exports = { checkAll, checkOne, offerInfo, sendDiscord, sendAllOffers, notifyUser, paybackStarter };

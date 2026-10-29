@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>Mr.Fox Bot</title>
+<link rel="stylesheet" href="ui.css">
+</head>
+<body>
+<aside class="side">
+  <div class="brand"><img src="../../build/icon.png" alt=""><div><b>Mr.Fox Bot</b><small id="ver"></small></div></div>
+  <nav>
+    <button data-tab="products" class="on">🛍️ Produkte</button>
+    <button data-tab="alerts">🔔 Alarme <span id="alertCount" class="pill"></span></button>
+    <button data-tab="settings">⚙️ Einstellungen</button>
+    <button data-tab="logins">🔑 Zugänge</button>
+    <button data-tab="payback">💳 Payback</button>
+    <button data-tab="data">📦 Export/Import</button>
+  </nav>
+  <div class="sig">🦊 Design by Mr.Fox<br><span id="sigver"></span></div>
+</aside>
+
+<main>
+  <header class="bot" id="botBox">
+    <div class="botinfo">
+      <div class="bottitle" id="botTitle">…</div>
+      <div class="botsum" id="botSum"></div>
+      <div class="botstatus" id="botStatus"></div>
+    </div>
+    <div class="botbtns">
+      <button id="botBtn" class="primary">Dauerbetrieb starten</button>
+      <button id="checkBtn">Jetzt prüfen</button>
+    </div>
+  </header>
+
+  <section id="tab-products" class="tab on">
+    <div class="card">
+      <h2>Produkt hinzufügen</h2>
+      <div class="shoppick" id="shopPick"></div>
+      <div class="grid2">
+        <input id="inUrl" placeholder="Amazon-Link oder ASIN">
+        <input id="inName" placeholder="Name (optional)">
+        <input id="inTarget" placeholder="Zielpreis in € (optional)">
+        <input id="inOffer" placeholder="OfferListingId (optional – hält genau dieses Angebot fest)">
+      </div>
+      <button id="addBtn" class="primary">Hinzufügen</button>
+    </div>
+    <div class="filters" id="filters"></div>
+    <div id="list"></div>
+  </section>
+
+  <section id="tab-alerts" class="tab">
+    <div class="card">
+      <h2>Letzte Alarme</h2>
+      <p class="hint">Jeder Alarm erscheint auch als Windows-Benachrichtigung (Klick öffnet die Seite) und – wenn eingerichtet – bei Discord.</p>
+      <button id="clearAlerts">Verlauf leeren</button>
+    </div>
+    <div id="alertList"></div>
+  </section>
+
+  <section id="tab-settings" class="tab">
+    <div class="card">
+      <h2>Überwachung je Shop</h2>
+      <div id="shopSwitches" class="switches"></div>
+    </div>
+    <div class="card">
+      <h2>Prüfen &amp; Alarme</h2>
+      <label>Amazon-Domain <input id="sDomain"></label>
+      <label>Amazon-Prüfintervall (Minuten, min. 1) <input id="sAmazonInterval" type="number" min="1"></label>
+      <label>Müller/MediaMarkt/BAUR-Prüfintervall (Minuten, min. 5) <input id="sInterval" type="number" min="5"></label>
+      <label>Alarm bei Preisfall in % (0 = aus) <input id="sDrop" type="number" min="0"></label>
+      <label>Discord-Webhook-URL (optional) <input id="sWebhook"></label>
+      <div class="row"><button id="discordTest">Discord testen</button><button id="sendOffers">Alle OfferListingIds an Discord senden</button></div>
+    </div>
+    <div class="card">
+      <h2>Warenkorb &amp; Auto-Kauf</h2>
+      <label class="cb"><input type="checkbox" id="sAutoCart"> Bei Alarm automatisch in den Warenkorb legen (Anmeldung im Bot nötig)</label>
+      <label class="cb warn"><input type="checkbox" id="sAutoBuy"> Auto-Kauf erlauben: scharf geschaltete Produkte werden OHNE Rückfrage bestellt (Standard-Adresse und -Zahlungsart)</label>
+      <label class="cb"><input type="checkbox" id="sPaypal"> Zahlung: immer PayPal wählen, wenn angeboten (Müller, MediaMarkt, BAUR – Amazon bietet kein PayPal)</label>
+      <div class="row"><button data-login="https://www.paypal.com/signin">Bei PayPal anmelden (Bot-Browser, „Eingeloggt bleiben“ anhaken)</button></div>
+    </div>
+    <div class="card">
+      <h2>Fenster</h2>
+      <label class="cb"><input type="checkbox" id="sOpen"> Bei Alarm die Seite automatisch öffnen (nach Auto-Kauf: Bestellungen)</label>
+      <label class="cb"><input type="checkbox" id="sWatch"> Probelauf und Auto-Kauf in sichtbarem Fenster zeigen</label>
+      <label class="cb"><input type="checkbox" id="sExternal"> Links im Standard-Browser (z. B. Chrome) statt im Bot-Browser öffnen (Chrome hat eine eigene Anmeldung)</label>
+    </div>
+    <div class="card">
+      <h2>Windows</h2>
+      <label class="cb"><input type="checkbox" id="sAutostart"> Mit Windows starten (im Hintergrund; Dauerbetrieb läuft weiter, wenn er an war)</label>
+      <label class="cb"><input type="checkbox" id="sAwake"> PC nicht in den Energiesparmodus gehen lassen, solange der Bot läuft</label>
+      <p class="hint">Fenster schließen = Bot läuft im Hintergrund weiter (Fuchs unten rechts in der Taskleiste). Beenden über Rechtsklick auf den Fuchs.</p>
+    </div>
+    <button id="saveSettings" class="primary big">Speichern</button>
+  </section>
+
+  <section id="tab-logins" class="tab">
+    <div id="loginCards"></div>
+  </section>
+
+  <section id="tab-payback" class="tab">
+    <div class="card">
+      <h2>💳 PAYBACK (°Punkte bei Amazon, MediaMarkt und BAUR)</h2>
+      <p class="hint">Am PC läuft Payback im Bot-Browser – dieselbe Sitzung, mit der der Bot kauft.
+        1) Einmal „Bei Payback anmelden“ (2FA bestätigst du selbst, „Angemeldet bleiben“ anhaken).
+        2) Shops anhaken. 3) Mit „Weiterleitung testen“ prüfen, ob der Bot über Payback zum Shop kommt.
+        Mit eingeschaltetem Auto-Kauf über Payback öffnet der Bot vor jedem Kauf/Probelauf die Payback-Shopseite
+        und lässt sich zum Shop weiterleiten. Klappt das nicht, kauft er trotzdem (ohne °Punkte) und sagt es dir.</p>
+      <div class="row"><button data-login="https://www.payback.de/login">Bei Payback anmelden (Bot-Browser)</button></div>
+      <label class="cb"><input type="checkbox" id="pAuto"> Auto-Kauf und Probelauf über Payback starten (für die angehakten Shops)</label>
+    </div>
+    <div id="paybackCards"></div>
+  </section>
+
+  <section id="tab-data" class="tab">
+    <div class="card">
+      <h2>📦 Produkte übertragen (Handy ↔ PC)</h2>
+      <p class="hint">In der Handy-App „Produkte exportieren“ tippen, die Datei auf den PC holen (z. B. per Mail, Google Drive oder USB) und hier importieren – oder andersherum.
+        Gleiche Produkte werden ersetzt. Aus Sicherheit wird Auto-Kauf bei importierten Produkten ausgeschaltet, damit Handy und PC nicht doppelt bestellen.
+        Passwörter werden nie exportiert.</p>
+      <div class="row">
+        <button id="exportBtn" class="primary">📤 Produkte exportieren</button>
+        <button id="importBtn">📥 Produkte importieren</button>
+        <label class="cb inline"><input type="checkbox" id="importSettings"> Einstellungen mit übernehmen (Intervalle, Webhook …)</label>
+      </div>
+    </div>
+    <div class="card">
+      <h2>🧰 Fehlersuche</h2>
+      <p class="hint">Kopiert das Ablaufprotokoll des letzten Probelaufs/Kaufs (mit automatisch aufgenommenen Seiten). Im sichtbaren Ablauf-Fenster gibt es oben außerdem „📋 Seitenbericht kopieren“.</p>
+      <button id="copyReport">📋 Letzten Ablauf kopieren</button>
+    </div>
+  </section>
+</main>
+
+<div id="modal" class="modal hidden"><div class="dlg"><h3 id="mTitle"></h3><div id="mBody"></div><div class="row end" id="mBtns"></div></div></div>
+<div id="toasts"></div>
+<script src="ui.js"></script>
+</body>
+</html>

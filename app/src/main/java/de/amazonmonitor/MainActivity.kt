@@ -21,6 +21,7 @@ import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.work.Constraints
@@ -43,6 +44,32 @@ class MainActivity : AppCompatActivity() {
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_LONG).show()
 
     private var overlayHint: () -> Unit = {}
+
+    // --- Export/Import der Produkte (Datei, gleiches Format wie das Windows-Programm)
+    private var importWithSettings = false
+
+    private val exportLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri == null) return@registerForActivityResult
+        try {
+            contentResolver.openOutputStream(uri)?.use { it.write(Store.exportJson(this).toString(1).toByteArray(Charsets.UTF_8)) }
+            toast("${Store.load(this).size} Produkte exportiert. Datei auf den PC holen und dort im Mr.Fox Bot importieren.")
+        } catch (e: Exception) {
+            toast("Export fehlgeschlagen: ${e.message}")
+        }
+    }
+
+    private val importLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@registerForActivityResult
+        try {
+            val text = contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) } ?: ""
+            val (n, disarmed) = Store.importJson(this, org.json.JSONObject(text), importWithSettings)
+            refresh()
+            toast("$n Produkte importiert." +
+                if (disarmed > 0) " Auto-Kauf bei $disarmed Produkt(en) ausgeschaltet (sonst würden Handy und PC doppelt kaufen)." else "")
+        } catch (e: Exception) {
+            toast("Import fehlgeschlagen: ${e.message}")
+        }
+    }
 
     private fun overlayText() =
         if (Links.canOpenFromBackground(this)) "✅ „Über anderen Apps einblenden“ erlaubt"
@@ -444,6 +471,22 @@ class MainActivity : AppCompatActivity() {
                 refresh()
             }
         })
+
+        // --- Produkte übertragen (Handy ↔ PC)
+        root.addView(label("📦 Produkte übertragen (Handy ↔ PC)"))
+        root.addView(TextView(this).apply {
+            text = "Exportiert alle Produkte in eine Datei (ohne Passwörter). Die Datei z. B. per Mail oder Google Drive " +
+                "auf den PC holen und im Windows-Programm „Mr.Fox Bot“ importieren – oder andersherum. " +
+                "Beim Import wird Auto-Kauf ausgeschaltet, damit nicht doppelt bestellt wird."
+            textSize = 12f
+        })
+        root.addView(button("📤 Produkte exportieren") { exportLauncher.launch("mrfox-produkte.json") })
+        val cbImportSettings = CheckBox(this).apply { text = "Beim Import auch Einstellungen übernehmen (Intervalle, Webhook …)" }
+        root.addView(button("📥 Produkte importieren") {
+            importWithSettings = cbImportSettings.isChecked
+            importLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream", "*/*"))
+        })
+        root.addView(cbImportSettings)
 
         root.addView(button("Jetzt prüfen") {
             val req = OneTimeWorkRequestBuilder<CheckWorker>().addTag(CheckWorker.TAG_NOW).build()

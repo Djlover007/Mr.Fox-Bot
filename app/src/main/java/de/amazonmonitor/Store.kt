@@ -342,6 +342,64 @@ object Store {
         prefs(c).edit().remove("${shop.credPrefix}_mail").remove("${shop.credPrefix}_pw").apply()
     }
 
+    // --- Export/Import (gleiches Format wie das Windows-Programm; Passwörter werden nie exportiert)
+    fun exportJson(c: Context): JSONObject {
+        val arr = JSONArray()
+        load(c).forEach { arr.put(it.toJson()) }
+        val s = JSONObject()
+            .put("domain", domain(c))
+            .put("interval", interval(c))
+            .put("amazonInterval", amazonInterval(c))
+            .put("drop", dropPercent(c))
+            .put("webhook", webhook(c))
+            .put("autoCart", autoCart(c))
+            .put("preferPaypal", preferPaypal(c))
+        return JSONObject()
+            .put("app", "Mr.Fox Bot")
+            .put("format", 1)
+            .put("exported", System.currentTimeMillis())
+            .put("from", "android")
+            .put("products", arr)
+            .put("settings", s)
+    }
+
+    /**
+     * Übernimmt Produkte aus einer Exportdatei (gleiche ID wird ersetzt). Auto-Kauf wird dabei IMMER
+     * ausgeschaltet, damit Handy und PC nicht denselben Artikel doppelt bestellen.
+     * Ergebnis: (Anzahl importiert, Anzahl mit ausgeschaltetem Auto-Kauf).
+     */
+    @Synchronized
+    fun importJson(c: Context, o: JSONObject, withSettings: Boolean): Pair<Int, Int> {
+        val arr = o.optJSONArray("products") ?: throw IllegalArgumentException("Keine Mr.Fox-Bot-Exportdatei")
+        val list = load(c)
+        var n = 0
+        var disarmed = 0
+        for (i in 0 until arr.length()) {
+            val jo = arr.optJSONObject(i) ?: continue
+            if (!jo.has("asin")) continue
+            val p = Product.fromJson(jo)
+            if (p.autoBuy) disarmed++
+            p.autoBuy = false
+            list.removeAll { it.asin == p.asin }
+            list.add(p)
+            n++
+        }
+        write(c, list)
+        val s = o.optJSONObject("settings")
+        if (withSettings && s != null) {
+            val e = prefs(c).edit()
+            if (s.has("domain")) e.putString("domain", s.optString("domain", "amazon.de"))
+            if (s.has("interval")) e.putInt("interval", s.optInt("interval", 60).coerceAtLeast(5))
+            if (s.has("amazonInterval")) e.putInt("amazon_interval", s.optInt("amazonInterval", 2).coerceAtLeast(1))
+            if (s.has("drop")) e.putInt("drop", s.optInt("drop", 10))
+            if (s.has("webhook")) e.putString("webhook", s.optString("webhook", ""))
+            if (s.has("autoCart")) e.putBoolean("autocart", s.optBoolean("autoCart"))
+            if (s.has("preferPaypal")) e.putBoolean("prefer_paypal", s.optBoolean("preferPaypal", true))
+            e.apply()
+        }
+        return n to disarmed
+    }
+
     fun status(c: Context): String = prefs(c).getString("status", "–") ?: "–"
 
     fun setStatus(c: Context, text: String) {

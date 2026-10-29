@@ -61,3 +61,55 @@ jobs:
           tag_name: build-${{ github.run_number }}
           name: Build ${{ github.run_number }}
           files: app/build/outputs/apk/debug/app-debug.apk
+
+  # Windows-Programm (Electron): Selbsttest auf Windows, dann Setup.exe bauen und an dasselbe Release hängen
+  windows:
+    needs: build
+    if: always()
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Pakete laden
+        run: npm install --no-audit --no-fund
+
+      - name: Selbsttest (Windows)
+        continue-on-error: true
+        timeout-minutes: 12
+        env:
+          MRFOX_USERDATA: ${{ runner.temp }}/mrfox-test
+        run: |
+          set -o pipefail
+          npx electron . --selftest 2>&1 | grep -v -i "gpu\|dbus" | tee selftest.log
+
+      - name: Windows-Programm bauen
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          set -o pipefail
+          if ! npx electron-builder --win --x64 --publish never 2>&1 | tee build.log; then
+            msg=$(tail -40 build.log | sed 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error::$msg"
+            exit 1
+          fi
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MrFoxBot-Windows
+          path: windows/dist/*.exe
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Build ${{ github.run_number }}
+          files: windows/dist/*.exe

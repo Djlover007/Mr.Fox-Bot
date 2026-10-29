@@ -1,0 +1,37 @@
+{
+  "name": "mrfox-bot",
+  "productName": "Mr.Fox Bot",
+  "version": "5.1.0",
+  "description": "Mr.Fox Bot für Windows – Preis- und Verfügbarkeitswächter für Amazon, Müller, MediaMarkt und BAUR",
+  "author": "Mr.Fox",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "de.mrfox.bot",
+    "productName": "Mr.Fox Bot",
+    "directories": { "output": "dist" },
+    "files": ["src/**/*", "build/icon.png", "package.json"],
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Mr.Fox Bot",
+      "artifactName": "MrFoxBot-Setup-${version}.exe"
+    }
+  }
+}
