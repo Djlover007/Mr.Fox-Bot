@@ -44,6 +44,11 @@ class WatchActivity : AppCompatActivity() {
         setContentView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(banner, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(android.widget.Button(this@WatchActivity).apply {
+                text = "📋 Seitenbericht kopieren (für die Fehlersuche)"
+                textSize = 12f
+                setOnClickListener { copyReport() }
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(web, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         })
 
@@ -52,6 +57,20 @@ class WatchActivity : AppCompatActivity() {
         if (p == null || !p.complete(this)) {
             // Niemand wartet (z. B. nach Drehen des Bildschirms neu erstellt) – nichts zu tun.
             banner.text = "Kein Auto-Kauf aktiv."
+        }
+    }
+
+    /** Beschreibung der angezeigten Seite (Knöpfe, Auswahlfelder, Beschriftungen) in die Zwischenablage. */
+    private fun copyReport() {
+        web.evaluateJavascript(REPORT_JS) { raw ->
+            val text = try {
+                org.json.JSONTokener(raw ?: "null").nextValue() as? String ?: "leer"
+            } catch (e: Exception) {
+                raw ?: "leer"
+            }
+            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("Seitenbericht", "Mr.Fox Seitenbericht\n" + text))
+            android.widget.Toast.makeText(this, "Seitenbericht kopiert – im Chat einfügen.", android.widget.Toast.LENGTH_LONG).show()
         }
     }
 
@@ -70,6 +89,28 @@ class WatchActivity : AppCompatActivity() {
     }
 
     companion object {
+        /** Sammelt sichtbare Überschriften, Knöpfe, Auswahlfelder und Beschriftungen (gekürzt). */
+        private const val REPORT_JS = """(function(){
+function t(e){return ((e.innerText||e.value||'')+'').replace(/\s+/g,' ').trim().slice(0,60);}
+function a(e,n){var v=e.getAttribute(n);return v?(' '+n+'="'+v.slice(0,40)+'"'):'';}
+function seen(e){var s=getComputedStyle(e);return s.display!=='none'&&s.visibility!=='hidden';}
+var out=['URL: '+location.href,'Titel: '+document.title];
+var hs=document.querySelectorAll('h1,h2,h3,h4,legend');out.push('--- Überschriften');
+for(var i=0;i<hs.length&&i<30;i++)if(seen(hs[i]))out.push(hs[i].tagName+': '+t(hs[i]));
+var rs=document.querySelectorAll('input[type=radio],input[type=checkbox],[role=radio],[role=option],[aria-checked],[aria-selected]');out.push('--- Auswahlfelder');
+for(var j=0;j<rs.length&&j<40;j++){var r=rs[j];var lab='';if(r.id){var l=document.querySelector('label[for="'+r.id+'"]');if(l)lab=t(l);}
+ var L=r.closest('label');if(!lab&&L)lab=t(L);
+ var box=r.parentElement;var bt=box?t(box):'';
+ out.push(r.tagName+(r.type?'['+r.type+']':'')+a(r,'id')+a(r,'name')+a(r,'value')+a(r,'role')+' checked='+(r.checked||r.getAttribute('aria-checked')||r.getAttribute('aria-selected'))+(seen(r)?'':' (unsichtbar)')+' | Label: '+lab+' | Umgebung: '+bt);}
+var bs=document.querySelectorAll('button,a,[role=button],input[type=submit]');out.push('--- Knöpfe');
+var n=0;for(var k=0;k<bs.length&&n<60;k++){var b=bs[k];if(!seen(b))continue;var tx=t(b);var al=a(b,'aria-label')+a(b,'title')+a(b,'data-testid');
+ if(!tx&&!al)al=' class="'+((b.getAttribute('class')||'').slice(0,40))+'"';out.push(b.tagName+': '+tx+al);n++;}
+var pp=[].filter.call(document.querySelectorAll('*'),function(e){return e.children.length===0&&/paypal/i.test((e.innerText||e.alt||e.getAttribute('aria-label')||''));});
+out.push('--- Elemente mit „PayPal“ ('+pp.length+')');
+for(var q=0;q<pp.length&&q<10;q++){var e=pp[q];var chain=[];var x=e;for(var u=0;u<4&&x;u++){chain.push(x.tagName+(x.getAttribute('role')?'[role='+x.getAttribute('role')+']':'')+(x.getAttribute('class')?'.'+x.getAttribute('class').split(' ')[0].slice(0,25):''));x=x.parentElement;}
+ out.push(chain.join(' < ')+' | '+t(e));}
+return out.join('\n').slice(0,7000);})()"""
+
         @Volatile
         private var pending: CompletableDeferred<WatchActivity>? = null
 
