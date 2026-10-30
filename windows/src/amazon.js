@@ -51,6 +51,8 @@ async function ensureSession(wc, status) {
   for (let i = 0; i < 15 && (wc.isLoading() || i < 3); i++) await B.sleep(1000);
 }
 
+const NEW_LOGIN_HINT = 'Amazon will eine Anmeldung (neue Anmeldeseite) – einmal unter „🔑 Konten & Passwörter“ → Amazon → „Im Bot-Browser anmelden“ selbst anmelden und „Angemeldet bleiben“ anhaken';
+
 function newSession() { return { emailTries: 0, pwTries: 0, lastFill: 0, lastKind: '' }; }
 
 function isAmazon(url) {
@@ -233,7 +235,7 @@ async function runBuy(asin, { dryRun, visible, beforeStart }) {
   let wasLogin = false;
   let reloaded = false;
   const sess = newSession();
-  const deadline = Date.now() + 120000;
+  let deadline = Date.now() + 120000;
 
   const finish = (r) => {
     Log.add(`Ergebnis: ${r.outcome} – ${r.detail}`);
@@ -242,6 +244,27 @@ async function runBuy(asin, { dryRun, visible, beforeStart }) {
   };
 
   let cookieRetries = 0;
+  /**
+   * Neue Amazon-Anmeldeseite (/ax/claim): Automatisches Ausfüllen beantwortet Amazon dort mit „Bitte aktiviere
+   * Cookies“. Deshalb meldest du dich in diesem Fenster selbst an; der Bot wartet und macht danach weiter.
+   */
+  const manualLogin = async () => {
+    if (!visible) return { outcome: Outcome.NOT_LOGGED_IN, detail: NEW_LOGIN_HINT };
+    status('Bitte in DIESEM Fenster selbst bei Amazon anmelden („Angemeldet bleiben“ anhaken) – der Bot wartet bis zu 3 Minuten …');
+    Log.add('Warte auf Anmeldung von Hand (neue Amazon-Anmeldeseite)');
+    const end = Date.now() + 180000;
+    while (Date.now() < end) {
+      if (closed) return { outcome: Outcome.FAILED, detail: 'Fenster geschlossen' };
+      await B.sleep(1500);
+      if (!wc.isLoading() && !isLoginUrl(wc.getURL())) {
+        Log.add('Anmeldung erledigt');
+        status('Angemeldet – weiter …');
+        deadline = Date.now() + 120000;
+        return null;
+      }
+    }
+    return { outcome: Outcome.NOT_LOGGED_IN, detail: 'Anmeldung nicht innerhalb von 3 Minuten abgeschlossen' };
+  };
   /** „Bitte aktiviere Cookies“: Sitzung neu holen und noch einmal von vorn; beim 2. Mal aufgeben. */
   const cookieRetry = async () => {
     cookieRetries++;
@@ -277,6 +300,7 @@ async function runBuy(asin, { dryRun, visible, beforeStart }) {
         if (isLoginUrl(url)) {
           wasLogin = true;
           if ((await B.js(wc, COOKIE_PAGE_JS)) === 'yes') { const r = await cookieRetry(); if (r) return finish(r); continue; }
+          if (url.includes('/ax/')) { const r = await manualLogin(); if (r) return finish(r); continue; }
           const st = await loginStep(wc, sess);
           if (st === State.FILLED || st === State.WAIT) { status('Melde bei Amazon an …'); await B.sleep(2000); continue; }
           if (st !== State.NOT_LOGIN_PAGE) return finish({ outcome: Outcome.NOT_LOGGED_IN, detail: explain(st) });
@@ -312,6 +336,7 @@ async function runBuy(asin, { dryRun, visible, beforeStart }) {
           return finish(stage === 2 ? { outcome: Outcome.UNCLEAR, detail: 'Captcha nach dem Bestellen', total } : { outcome: Outcome.BLOCKED, detail: 'Amazon zeigt ein Captcha' });
         case 'login': {
           if (stage === 2) return finish({ outcome: Outcome.UNCLEAR, detail: 'Anmeldung nach dem Bestellen verlangt', total });
+          if (wc.getURL().includes('/ax/')) { const r = await manualLogin(); if (r) return finish(r); polls = 0; break; }
           const st = await loginStep(wc, sess);
           if (st === State.FILLED || st === State.WAIT || st === State.NOT_LOGIN_PAGE) status('Melde bei Amazon an …');
           else return finish({ outcome: Outcome.NOT_LOGGED_IN, detail: explain(st) });
@@ -403,6 +428,7 @@ async function runCart(asin, offerId) {
       if (url.includes('validateCaptcha') || url.includes('/errors/')) return done('FAILED', CAPTCHA_DETAIL);
       if (isLoginUrl(url)) {
         wasLogin = true;
+        if (url.includes('/ax/')) return done('NOT_LOGGED_IN', NEW_LOGIN_HINT);
         if ((await B.js(wc, COOKIE_PAGE_JS)) === 'yes') return done('NOT_LOGGED_IN', 'Amazon meldet „Bitte aktiviere Cookies“ – einmal unter „🔑 Konten & Passwörter“ → Amazon → „Im Bot-Browser anmelden“');
         const st = await loginStep(wc, sess);
         if (st === State.FILLED || st === State.WAIT) { await B.sleep(2000); continue; }

@@ -37,6 +37,8 @@ function amazon(u) {
       <input id="buy-now-button" type="button" value="Jetzt kaufen" onclick="location.href='/checkout/spc'">`);
   }
   if (p === '/dp/B000TEST06') return page('Test6', '<span id="productTitle">Cookie-Test</span><input id="buy-now-button" type="button" value="Jetzt kaufen" onclick="location.href=\'/ax/claim?x=1\'">');
+  if (p === '/dp/B000TEST07') return page('Test7', '<span id="productTitle">Login-Test</span><input id="buy-now-button" type="button" value="Jetzt kaufen" onclick="location.href=\'/ax/claim/login\'">');
+  if (p === '/ax/claim/login') return page('Anmelden', '<h1>Anmelden oder Konto erstellen</h1><form><input name="email" id="ap_email_login"><span id="continue"><input type="submit" value="Weiter"></span></form>');
   if (p.startsWith('/ax/claim')) return page('Anmelden oder Konto erstellen', '<h1>Bitte aktiviere Cookies, um fortzufahren</h1><a href="#">Zurück zur vorherigen Seite</a>');
   if (p === '/checkout/spc') {
     return page('Bestellung', `<table id="subtotals-marketplace-table"><tr><td class="grand-total-price">1.305,98 €</td></tr></table>
@@ -179,7 +181,18 @@ async function run() {
     check('Amazon-Auto-Kauf', res.outcome === 'ORDERED' && st.amzOrdered, A.describe(res));
 
     res = await A.buy('B000TEST06', { dryRun: true, visible: false });
-    check('Amazon: Seite „Cookies aktivieren“ erkannt', res.outcome === 'NOT_LOGGED_IN' && /Cookies/.test(res.detail), A.describe(res));
+    check('Amazon: neue Anmeldeseite / Cookies erkannt', res.outcome === 'NOT_LOGGED_IN' && /(Cookies|Anmeldeseite)/.test(res.detail), A.describe(res));
+
+    // neue Anmeldeseite im sichtbaren Fenster: Bot füllt NICHT aus, wartet auf Anmeldung von Hand
+    const pr = A.buy('B000TEST07', { dryRun: true, visible: true });
+    let lw = null;
+    for (let i = 0; i < 40 && !lw; i++) { await B.sleep(1000); lw = BrowserWindow.getAllWindows().find((x) => /DIESEM Fenster/.test(x.getTitle())); }
+    await B.sleep(3000);
+    const untouched = lw ? await B.js(lw.webContents, "document.getElementById('ap_email_login').value") : 'kein Fenster';
+    if (lw) lw.webContents.loadURL('https://www.mock-amazon.test/checkout/spc');
+    res = await pr;
+    check('Amazon: neue Anmeldeseite → wartet auf Anmeldung von Hand, dann weiter', lw && untouched === '' && res.outcome === 'DRY_RUN_OK', (lw ? 'Feld: „' + untouched + '“ ' : 'kein Wartefenster ') + A.describe(res));
+    BrowserWindow.getAllWindows().forEach((x) => { if (/Fertig/.test(x.getTitle())) x.destroy(); });
 
     // 5) Amazon-Warenkorb per OfferListingId
     const c = await A.addToCart('B000TEST01', 'ABC+def123');

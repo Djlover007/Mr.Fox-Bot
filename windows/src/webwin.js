@@ -45,7 +45,8 @@ function open(url, { checkout = false, forceInApp = false } = {}) {
   let checkoutTried = false;
   wc.on('did-finish-load', async () => {
     const u = wc.getURL();
-    if (A.isLoginUrl(u) && A.isAmazon(u)) {
+    // neue Anmeldeseite (/ax/): nicht automatisch absenden – sonst antwortet Amazon mit „Bitte aktiviere Cookies“
+    if (A.isLoginUrl(u) && A.isAmazon(u) && !u.includes('/ax/')) {
       const st = await A.loginStep(wc, sess);
       const hint = {
         [A.State.OTP]: 'Bitte den Bestätigungscode eingeben – danach bleibt der Bot angemeldet.',
