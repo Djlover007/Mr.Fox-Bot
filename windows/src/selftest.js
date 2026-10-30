@@ -36,6 +36,8 @@ function amazon(u) {
       <input id="add-to-cart-button" type="button" value="In den Einkaufswagen" onclick="location.href='/cart/huc/'">
       <input id="buy-now-button" type="button" value="Jetzt kaufen" onclick="location.href='/checkout/spc'">`);
   }
+  if (p === '/dp/B000TEST06') return page('Test6', '<span id="productTitle">Cookie-Test</span><input id="buy-now-button" type="button" value="Jetzt kaufen" onclick="location.href=\'/ax/claim?x=1\'">');
+  if (p.startsWith('/ax/claim')) return page('Anmelden oder Konto erstellen', '<h1>Bitte aktiviere Cookies, um fortzufahren</h1><a href="#">Zurück zur vorherigen Seite</a>');
   if (p === '/checkout/spc') {
     return page('Bestellung', `<table id="subtotals-marketplace-table"><tr><td class="grand-total-price">1.305,98 €</td></tr></table>
       <span id="submitOrderButtonId"><input type="submit" value="Jetzt kaufen" onclick="location.href='/gp/buy/thankyou'"></span>`);
@@ -174,6 +176,9 @@ async function run() {
     // 4) Amazon-Auto-Kauf
     res = await A.buy('B000TEST01', { dryRun: false, visible: false });
     check('Amazon-Auto-Kauf', res.outcome === 'ORDERED' && st.amzOrdered, A.describe(res));
+
+    res = await A.buy('B000TEST06', { dryRun: true, visible: false });
+    check('Amazon: Seite „Cookies aktivieren“ erkannt', res.outcome === 'NOT_LOGGED_IN' && /Cookies/.test(res.detail), A.describe(res));
 
     // 5) Amazon-Warenkorb per OfferListingId
     const c = await A.addToCart('B000TEST01', 'ABC+def123');

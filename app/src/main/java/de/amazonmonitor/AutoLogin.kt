@@ -39,7 +39,7 @@ object AutoLogin {
             internal set
     }
 
-    fun isLoginUrl(url: String?): Boolean = url != null && url.contains("/ap/")
+    fun isLoginUrl(url: String?): Boolean = url != null && (url.contains("/ap/") || url.contains("/ax/"))
 
     private fun isAmazon(ctx: Context, url: String?): Boolean {
         val uri = Uri.parse(url ?: return false)

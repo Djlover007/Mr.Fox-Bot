@@ -122,7 +122,7 @@ function hintOf(d){
         "if(h.indexOf('thankyou')>=0||document.getElementById('widget-purchaseConfirmationStatus'))" +
         "return JSON.stringify({s:'done'});" +
         "if($CAPTCHA_TEST)return JSON.stringify({s:'captcha'});" +
-        "if(h.indexOf('/ap/')>=0)return JSON.stringify({s:'login'});" +
+        "if(h.indexOf('/ap/')>=0||h.indexOf('/ax/')>=0)return JSON.stringify({s:'login'});" +
         "for(var k=0;k<docs.length;k++){var d=docs[k];var b=q(d,BTN);if(!b)continue;var t=q(d,TOT);" +
         "var tt=t?(t.textContent||'').trim():'';if(!/\\d/.test(tt))tt=findTotal(d)||'';" +
         "if(tt)return JSON.stringify({s:'ready',total:tt});" +
@@ -320,7 +320,7 @@ function hintOf(d){
                 if (view == null || url == null || !cont.isActive || stage != 0) return
                 when {
                     url.contains("validateCaptcha") -> done(Result(Outcome.BLOCKED, "Amazon zeigt ein Captcha"))
-                    url.contains("/ap/") -> if (!loginRunning) {
+                    AutoLogin.isLoginUrl(url) -> if (!loginRunning) {
                         loginRunning = true
                         loginLoop()
                     }

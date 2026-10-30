@@ -34,6 +34,23 @@ const State = {
   OTP: 'OTP', VERIFY: 'VERIFY', GAVE_UP: 'GAVE_UP', NOT_LOGIN_PAGE: 'NOT_LOGIN_PAGE',
 };
 
+/** Anmeldeseite? (/ap/… klassisch, /ax/claim… neuer Ablauf) */
+function isLoginUrl(url) { return /\/(ap|ax)\//.test(url || ''); }
+
+/** Amazon-Seite „Bitte aktiviere Cookies“ (Sitzungs-Cookie fehlt)? */
+const COOKIE_PAGE_JS = "(function(){var t=(document.body&&document.body.innerText||'').slice(0,1500);return /aktiviere (bitte )?cookies|cookies aktivieren|enable cookies/i.test(t)?'yes':'no';})()";
+
+/** Sorgt dafür, dass die Bot-Sitzung ein Amazon-Sitzungs-Cookie hat (Startseite einmal laden). */
+async function ensureSession(wc, status) {
+  const d = String(Store.setting('domain'));
+  let have = [];
+  try { have = await B.ses().cookies.get({ domain: d, name: 'session-id' }); } catch (e) { /* egal */ }
+  if (have.length) return;
+  status && status('Hole Amazon-Sitzung …');
+  B.load(wc, `https://www.${d}/`);
+  for (let i = 0; i < 15 && (wc.isLoading() || i < 3); i++) await B.sleep(1000);
+}
+
 function newSession() { return { emailTries: 0, pwTries: 0, lastFill: 0, lastKind: '' }; }
 
 function isAmazon(url) {
@@ -70,7 +87,7 @@ function fillScript(email, pw) {
 /** Ein Anmeldeschritt (höchstens ein Versuch je E-Mail und Passwort pro Ablauf). */
 async function loginStep(wc, sess) {
   const url = wc.getURL();
-  if (!url.includes('/ap/') || !isAmazon(url)) return State.NOT_LOGIN_PAGE;
+  if (!isLoginUrl(url) || !isAmazon(url)) return State.NOT_LOGIN_PAGE;
   const email = Store.loginEmail('amazon');
   const pw = Store.loginPassword('amazon');
   const kind = (await B.js(wc, DETECT_JS)) || '';
@@ -167,7 +184,7 @@ function pollJs() {
   return '(function(){' + docsJs() + FIND_TOTAL_JS +
     "var h=location.href;if(h.indexOf('thankyou')>=0||document.getElementById('widget-purchaseConfirmationStatus'))return JSON.stringify({s:'done'});" +
     'if(' + CAPTCHA_TEST + ")return JSON.stringify({s:'captcha'});" +
-    "if(h.indexOf('/ap/')>=0)return JSON.stringify({s:'login'});" +
+    "if(/aktiviere (bitte )?cookies|cookies aktivieren|enable cookies/i.test((document.body&&document.body.innerText||'').slice(0,1500)))return JSON.stringify({s:'cookies'});if(h.indexOf('/ap/')>=0||h.indexOf('/ax/')>=0)return JSON.stringify({s:'login'});" +
     'for(var k=0;k<docs.length;k++){var d=docs[k];var b=q(d,BTN);if(!b)continue;var t=q(d,TOT);' +
     "var tt=t?(t.textContent||'').trim():'';if(!/\\d/.test(tt))tt=findTotal(d)||'';" +
     "if(tt)return JSON.stringify({s:'ready',total:tt});return JSON.stringify({s:'nototal',hint:hintOf(d)});}" +
@@ -224,8 +241,27 @@ async function runBuy(asin, { dryRun, visible, beforeStart }) {
     return r;
   };
 
+  let cookieRetries = 0;
+  /** „Bitte aktiviere Cookies“: Sitzung neu holen und noch einmal von vorn; beim 2. Mal aufgeben. */
+  const cookieRetry = async () => {
+    cookieRetries++;
+    Log.add('Amazon: Seite „Bitte aktiviere Cookies“');
+    if (cookieRetries > 1) {
+      return { outcome: Outcome.NOT_LOGGED_IN, detail: 'Amazon meldet „Bitte aktiviere Cookies“ – einmal unter „🔑 Konten & Passwörter“ → Amazon → „Im Bot-Browser anmelden“, danach Probelauf wiederholen' };
+    }
+    status('Amazon will Cookies – hole Sitzung neu …');
+    B.load(wc, `https://www.${domain}/`);
+    await B.sleep(4000);
+    stage = 0;
+    polls = 0;
+    B.load(wc, productUrl);
+    await B.sleep(2500);
+    return null;
+  };
+
   try {
     if (beforeStart) await beforeStart(wc, status);
+    await ensureSession(wc, status);
     status('Lade Produktseite …');
     B.load(wc, productUrl);
     await B.sleep(2500);
@@ -237,8 +273,9 @@ async function runBuy(asin, { dryRun, visible, beforeStart }) {
         polls++;
         if (wc.isLoading()) { await B.sleep(1000); continue; }
         if (url.includes('validateCaptcha')) return finish({ outcome: Outcome.BLOCKED, detail: 'Amazon zeigt ein Captcha' });
-        if (url.includes('/ap/')) {
+        if (isLoginUrl(url)) {
           wasLogin = true;
+          if ((await B.js(wc, COOKIE_PAGE_JS)) === 'yes') { const r = await cookieRetry(); if (r) return finish(r); continue; }
           const st = await loginStep(wc, sess);
           if (st === State.FILLED || st === State.WAIT) { status('Melde bei Amazon an …'); await B.sleep(2000); continue; }
           if (st !== State.NOT_LOGIN_PAGE) return finish({ outcome: Outcome.NOT_LOGGED_IN, detail: explain(st) });
@@ -262,6 +299,12 @@ async function runBuy(asin, { dryRun, visible, beforeStart }) {
       const o = B.parse(await B.js(wc, pollJs()));
       polls++;
       switch (o.s) {
+        case 'cookies': {
+          if (stage === 2) return finish({ outcome: Outcome.UNCLEAR, detail: 'Amazon meldet „Cookies aktivieren“ nach dem Bestellen', total });
+          const r = await cookieRetry();
+          if (r) return finish(r);
+          continue;
+        }
         case 'done':
           return finish(stage === 2 ? { outcome: Outcome.ORDERED, detail: 'Bestellung bestätigt', total } : { outcome: Outcome.UNCLEAR, detail: 'Bestätigungsseite erschienen, ohne dass der Bot bestellt hat' });
         case 'captcha':
@@ -350,14 +393,16 @@ async function runCart(asin, offerId) {
     if (!fastFailed && fastUrl) { stage = 10; B.load(wc, fastUrl); } else { stage = 0; B.load(wc, productUrl); }
   };
   try {
+    await ensureSession(wc);
     start();
     await B.sleep(2000);
     while (Date.now() < deadline) {
       if (wc.isLoading()) { await B.sleep(800); continue; }
       const url = wc.getURL();
       if (url.includes('validateCaptcha') || url.includes('/errors/')) return done('FAILED', CAPTCHA_DETAIL);
-      if (url.includes('/ap/')) {
+      if (isLoginUrl(url)) {
         wasLogin = true;
+        if ((await B.js(wc, COOKIE_PAGE_JS)) === 'yes') return done('NOT_LOGGED_IN', 'Amazon meldet „Bitte aktiviere Cookies“ – einmal unter „🔑 Konten & Passwörter“ → Amazon → „Im Bot-Browser anmelden“');
         const st = await loginStep(wc, sess);
         if (st === State.FILLED || st === State.WAIT) { await B.sleep(2000); continue; }
         if (st !== State.NOT_LOGIN_PAGE) return done('NOT_LOGGED_IN', explain(st));
@@ -402,6 +447,6 @@ async function reportOf(wc) {
 }
 
 module.exports = {
-  Outcome, describe, money, State, newSession, loginStep, explain, isAmazon,
+  Outcome, describe, money, State, newSession, loginStep, explain, isAmazon, isLoginUrl,
   buy, addToCart, exclusive, cartUrl, checkoutUrl, ordersUrl, encodeOffer, reportOf, FIND_TOTAL_JS,
 };

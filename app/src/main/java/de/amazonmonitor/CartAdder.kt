@@ -162,7 +162,7 @@ object CartAdder {
                             if (view == null || url == null || !cont.isActive) return
                             if (url.contains("validateCaptcha") || url.contains("/errors/")) {
                                 done(Result.FAILED, CAPTCHA_DETAIL)
-                            } else if (url.contains("/ap/")) {
+                            } else if (AutoLogin.isLoginUrl(url)) {
                                 if (!loginRunning) {
                                     loginRunning = true
                                     loginLoop()
