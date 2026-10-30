@@ -134,6 +134,7 @@ function handler(req) {
       <h1>Amazon</h1><a href="https://www.amazon.de/?tag=payback-21">Jetzt shoppen</a>`);
   } else if (u.hostname === 'www.amazon.de') r = page('Amazon.de', '<h1>Amazon über Payback</h1>');
   else if (u.hostname === 'www.paypal.com') r = page('PayPal', '<form><input id="email" type="email"><button type="button" onclick="document.getElementById(\'pwbox\').style.display=\'block\'">Weiter</button><div id="pwbox" style="display:none"><input id="password" type="password"></div></form>');
+  else if (u.hostname === 'updates.mock.test') r = JSON.stringify({ build: 99, android: { versionCode: 999, versionName: '99.0' }, windows: { version: '99.0.0', url: 'https://updates.mock.test/MrFoxBot-Setup-99.0.0.exe' } });
   else if (u.hostname === 't.me') r = telegram(u);
   else if (u.hostname === 's.pirat.deals') r = pirat(u);
   else if (u.hostname === 'www.mock-amazon.test') r = amazon(u);
@@ -281,6 +282,14 @@ async function run() {
     check('Konten: PayPal-Anmeldung ausgefüllt', em === 'fuchs@example.org' && pv === 'Geheim123!', em + ' / ' + (pv ? '***' : 'leer'));
     ww.destroy();
     check('Konten: Passwort verschlüsselt gespeichert', !JSON.stringify(Store.load().secrets).includes('Geheim123!') && Store.loginPassword('paypal') === 'Geheim123!', '');
+
+    // Update
+    const U = require('./updater');
+    check('Update: Versionen vergleichen', U.newer('5.10.0', '5.9.0') && !U.newer('5.9.0', '5.9.0') && !U.newer('5.8.1', '5.9.0'), '');
+    const ses2 = require('electron').session.defaultSession;
+    ses2.protocol.handle('https', handler);
+    const ui = await U.check('https://updates.mock.test/version.json');
+    check('Update: neue Version erkannt', ui.available && ui.version === '99.0.0', JSON.stringify(ui));
 
     // 16) Oberfläche lädt ohne Fehler
     const errors = [];

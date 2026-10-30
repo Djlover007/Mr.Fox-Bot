@@ -99,6 +99,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        wantUpdate = intent?.getBooleanExtra(Updater.EXTRA_UPDATE, false) == true
         title = "Mr.Fox Bot"
 
         if (Build.VERSION.SDK_INT >= 33 &&
@@ -130,6 +131,9 @@ class MainActivity : AppCompatActivity() {
             handler.postDelayed({ updateBotView() }, 800)
         }
         root.addView(botButton)
+        // --- Update-Hinweis (nur sichtbar, wenn ein neues Update da ist)
+        updateBtn = button("") { startUpdate() }.apply { visibility = View.GONE }
+        root.addView(updateBtn)
         root.addView(button("⚙️ Konten, Passwörter & Dark Mode") {
             startActivity(Intent(this, AccountsActivity::class.java))
         })
@@ -566,6 +570,7 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             ""
         }
+        root.addView(button("⬆️ Nach Updates suchen") { checkUpdateNow() }.apply { textSize = 12f })
         root.addView(TextView(this).apply {
             text = "🦊 Design by Mr.Fox" + if (version.isNotEmpty()) "\nVersion $version" else ""
             textSize = 14f
@@ -639,6 +644,68 @@ class MainActivity : AppCompatActivity() {
         overlayHint()
         updatePaybackAuto()
         refresh()
+        updateUpdateBtn()
+        if (wantUpdate) {
+            wantUpdate = false
+            startUpdate()
+        }
+        // höchstens stündlich im Hintergrund nach Updates schauen
+        val app = applicationContext
+        CoroutineScope(Dispatchers.IO).launch {
+            Updater.checkQuietly(app, 1)
+            withContext(Dispatchers.Main) { if (!isFinishing && !isDestroyed) updateUpdateBtn() }
+        }
+    }
+
+    // --- Automatisches Update
+    private lateinit var updateBtn: Button
+    private var updating = false
+    private var wantUpdate = false
+
+    private fun updateUpdateBtn() {
+        val p = Updater.pending(this)
+        updateBtn.visibility = if (p != null) View.VISIBLE else View.GONE
+        if (p != null && !updating) updateBtn.text = "⬆️ Update ${p.versionName} installieren"
+    }
+
+    private fun startUpdate() {
+        val p = Updater.pending(this) ?: return toast("Kein Update vorhanden.")
+        if (updating) return
+        updating = true
+        updateBtn.isEnabled = false
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                Updater.downloadAndInstall(this@MainActivity, p) { s -> updateBtn.text = s; toast(s) }
+            } catch (e: Exception) {
+                toast("Update fehlgeschlagen: ${e.message}")
+            }
+            updating = false
+            updateBtn.isEnabled = true
+            updateUpdateBtn()
+        }
+    }
+
+    private fun checkUpdateNow() {
+        toast("Suche Updates …")
+        val app = applicationContext
+        CoroutineScope(Dispatchers.IO).launch {
+            val msg = try {
+                val i = Updater.fetch(app)
+                if (i == null) "Kein Update – du hast die neueste Version." else "Update ${i.versionName} gefunden."
+            } catch (e: Exception) {
+                "⚠️ ${e.message}"
+            }
+            withContext(Dispatchers.Main) {
+                if (isFinishing || isDestroyed) return@withContext
+                toast(msg)
+                updateUpdateBtn()
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (intent.getBooleanExtra(Updater.EXTRA_UPDATE, false)) startUpdate()
     }
 
     private fun schedule(intervalMin: Int, update: Boolean) {

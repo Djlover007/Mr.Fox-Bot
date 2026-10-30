@@ -23,6 +23,7 @@
 </aside>
 
 <main>
+  <div id="updBox" class="upd hidden"><span id="updText"></span> <button id="updBtn" class="primary">⬆️ Jetzt installieren</button></div>
   <header class="bot" id="botBox">
     <div class="botinfo">
       <div class="bottitle" id="botTitle">…</div>
@@ -86,6 +87,11 @@
       <label class="cb"><input type="checkbox" id="sOpen"> Bei Alarm die Seite automatisch öffnen (nach Auto-Kauf: Bestellungen)</label>
       <label class="cb"><input type="checkbox" id="sWatch"> Probelauf und Auto-Kauf in sichtbarem Fenster zeigen</label>
       <label class="cb"><input type="checkbox" id="sExternal"> Links im Standard-Browser (z. B. Chrome) statt im Bot-Browser öffnen (Chrome hat eine eigene Anmeldung)</label>
+    </div>
+    <div class="card">
+      <h2>⬆️ Updates</h2>
+      <label class="cb"><input type="checkbox" id="sAutoUpdate"> Updates automatisch installieren (der Bot prüft alle 6 Stunden, installiert, wenn er gerade nichts tut, und startet neu)</label>
+      <div class="row"><button id="checkUpd">Nach Updates suchen</button><span class="hint" id="verInfo"></span></div>
     </div>
     <div class="card">
       <h2>🌙 Darstellung</h2>

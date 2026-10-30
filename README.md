@@ -53,6 +53,14 @@ z. B. `PirateDeals` und `PirateDealsAngebote` (voreingestellt; derselbe Deal wir
 - PayPal/Payback: E-Mail und Passwort werden auf deren Anmeldeseite im App-Fenster/Bot-Browser nur eingetragen –
   „Einloggen“ und 2FA bestätigst du selbst. Passwörter werden nie exportiert.
 
+## ⬆️ Automatisches Update
+
+Jedes Release enthält `version.json`. **Windows** prüft alle 6 Stunden, lädt das neue Setup und installiert es still
+(wenn der Bot gerade nichts tut), danach startet er neu – abschaltbar unter Einstellungen → Updates.
+**Android** prüft beim Öffnen und im Dauerbetrieb; bei einem Update kommt eine Benachrichtigung bzw. der Knopf
+„⬆️ Update … installieren“ – Android verlangt dann einen Tipp auf „Aktualisieren“ (beim ersten Mal „Apps aus dieser
+Quelle erlauben“). Voraussetzung: das GitHub-Repo ist öffentlich.
+
 ## Funktionen
 - Produkte per Amazon-Link oder ASIN, optional mit Zielpreis
 - Hintergrundprüfung (mind. alle 15 Minuten)

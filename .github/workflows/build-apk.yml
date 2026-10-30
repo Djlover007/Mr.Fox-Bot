@@ -103,6 +103,17 @@ jobs:
           fi
           ls -la dist
 
+      # Versionsdatei für das automatische Update (App und Windows lesen sie aus dem neuesten Release)
+      - name: Versionsdatei
+        run: |
+          VC=$(grep -oE 'versionCode = [0-9]+' ../app/build.gradle.kts | grep -oE '[0-9]+')
+          VN=$(grep -oE 'versionName = "[^"]+"' ../app/build.gradle.kts | cut -d'"' -f2)
+          WV=$(node -p "require('./package.json').version")
+          BASE="https://github.com/${{ github.repository }}/releases/download/build-${{ github.run_number }}"
+          printf '{"build":%s,"android":{"versionCode":%s,"versionName":"%s","url":"%s/app-debug.apk"},"windows":{"version":"%s","url":"%s/MrFoxBot-Setup-%s.exe"}}\n' \
+            "${{ github.run_number }}" "$VC" "$VN" "$BASE" "$WV" "$BASE" "$WV" > dist/version.json
+          cat dist/version.json
+
       - uses: actions/upload-artifact@v4
         with:
           name: MrFoxBot-Windows
@@ -112,4 +123,7 @@ jobs:
         with:
           tag_name: build-${{ github.run_number }}
           name: Build ${{ github.run_number }}
-          files: windows/dist/*.exe
+          make_latest: "true"
+          files: |
+            windows/dist/*.exe
+            windows/dist/version.json

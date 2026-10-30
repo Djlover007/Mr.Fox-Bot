@@ -355,6 +355,19 @@ function renderLogins() {
     'https://www.payback.de/login'));
 }
 
+// ---------------- Update ----------------
+function renderUpdate() {
+  const u = S.update || {};
+  $('updBox').classList.toggle('hidden', !u.available && !u.status);
+  $('updText').textContent = u.status || (u.available ? `⬆️ Update ${u.version} ist da (du hast ${S.version}).` : '');
+  $('updBtn').style.display = u.available && !u.installing ? '' : 'none';
+  $('sAutoUpdate').checked = S.settings.autoUpdate !== false;
+  $('verInfo').textContent = 'Installiert: ' + S.version;
+}
+$('updBtn').addEventListener('click', async () => toast(await call('installUpdate')));
+$('checkUpd').addEventListener('click', async () => { toast('Suche Updates …', 2500); toast(await call('checkUpdate')); });
+$('sAutoUpdate').addEventListener('change', () => call('setSetting', 'autoUpdate', $('sAutoUpdate').checked));
+
 // ---------------- Darstellung ----------------
 function applyTheme() {
   const mode = (S && S.settings.theme) || 'dark';
@@ -445,6 +458,7 @@ async function refresh() {
   $('ver').textContent = 'Version ' + S.version;
   $('sigver').textContent = 'Version ' + S.version + ' (Windows)';
   applyTheme();
+  renderUpdate();
   renderBot();
   renderShopPick();
   renderFilters();

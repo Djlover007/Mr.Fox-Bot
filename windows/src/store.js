@@ -29,6 +29,7 @@ const DEFAULTS = {
   autostart: false,
   keepAwake: true,
   theme: 'dark',
+  autoUpdate: true,
   status: '–',
   lastRun_amazon: 0,
   lastRun_shops: 0,

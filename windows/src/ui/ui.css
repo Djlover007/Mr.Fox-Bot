@@ -140,3 +140,7 @@ button.big { padding: 10px 22px; font-size: 15px; }
 #toasts { position: fixed; right: 18px; bottom: 18px; display: flex; flex-direction: column; gap: 8px; z-index: 20; max-width: 460px; }
 .toast { background: var(--panel2); border: 1px solid var(--fox); border-radius: 10px; padding: 10px 14px; white-space: pre-line; box-shadow: 0 6px 24px var(--shadow); user-select: text; }
 .catitem span { white-space: pre-line; }
+
+.upd { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; margin-bottom: 12px;
+  border: 1px solid var(--fox); border-radius: 12px; background: rgba(244, 128, 42, .14); font-weight: 600; }
+.upd.hidden { display: none; }

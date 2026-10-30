@@ -25,6 +25,8 @@ const Payback = require('./payback');
 const WebWin = require('./webwin');
 const Log = require('./log');
 const Telegram = require('./telegram');
+const Updater = require('./updater');
+const { Notification } = require('electron');
 
 let mainWin = null;
 let tray = null;
@@ -34,6 +36,47 @@ let botBusy = false;
 let botActivity = '';
 let awakeId = null;
 let tgStatus = '';
+let updateInfo = null;
+let updateStatus = '';
+let updateNotified = '';
+
+// ---------------- Automatisches Update ----------------
+async function checkUpdate(manual) {
+  try {
+    const info = await Updater.check();
+    if (!info.available) {
+      updateInfo = null;
+      pushState();
+      return `Kein Update – du hast die neueste Version (${info.current}).`;
+    }
+    updateInfo = info;
+    pushState();
+    if (updateNotified !== info.version) {
+      updateNotified = info.version;
+      try {
+        if (Notification.isSupported()) {
+          const n = new Notification({ title: 'Mr.Fox Bot: Update ' + info.version, body: Store.setting('autoUpdate') !== false ? 'Wird automatisch installiert, sobald der Bot frei ist.' : 'Klicken zum Öffnen – dort „Jetzt installieren“.', icon: B.ICON });
+          n.on('click', showMain);
+          n.show();
+        }
+      } catch (e) { /* egal */ }
+    }
+    if (!manual && Store.setting('autoUpdate') !== false) maybeInstall();
+    return `Update ${info.version} verfügbar (du hast ${info.current}).`;
+  } catch (e) {
+    if (manual) return '⚠️ ' + e.message;
+    return '';
+  }
+}
+
+let installing = false;
+function maybeInstall() {
+  if (!updateInfo || installing) return;
+  if (botBusy || checking) { setTimeout(maybeInstall, 120000); return; } // nicht mitten in einer Prüfung/einem Kauf
+  installing = true;
+  Updater.install(updateInfo, (s) => { updateStatus = s; pushState(); }, () => { quitting = true; app.quit(); })
+    .catch((e) => { installing = false; updateStatus = '⚠️ ' + e.message; pushState(); });
+}
 
 // ---------------- Dauerbetrieb ----------------
 function botRunning() { return botTimer !== null; }
@@ -213,6 +256,7 @@ function state() {
     bot: { running: botRunning(), activity: botActivity, summary: summary(), status: s.status, checking },
     alerts: Store.alerts(),
     autostart: app.getLoginItemSettings().openAtLogin,
+    update: { available: !!updateInfo, version: updateInfo ? updateInfo.version : '', status: updateStatus, installing },
   };
 }
 
@@ -449,6 +493,8 @@ const api = {
       return { error: e.message };
     }
   },
+  checkUpdate: () => checkUpdate(true),
+  installUpdate: () => { if (!updateInfo) return 'Kein Update vorhanden.'; maybeInstall(); return 'Update wird geladen und installiert – der Bot startet danach neu.'; },
   setTheme: (mode) => {
     const m = ['dark', 'light', 'system'].includes(mode) ? mode : 'dark';
     Store.setSettings({ theme: m });
@@ -458,7 +504,7 @@ const api = {
   },
   revealPassword: (key) => Store.loginPassword(key) || '',
   setSetting: (k, v) => {
-    const allowed = ['paybackAutoBuy', 'preferPaypal', 'watchBuy', 'openOnAlert', 'externalBrowser', 'autoCart', 'keepAwake'];
+    const allowed = ['autoUpdate', 'paybackAutoBuy', 'preferPaypal', 'watchBuy', 'openOnAlert', 'externalBrowser', 'autoCart', 'keepAwake'];
     if (!allowed.includes(k)) return 'Nicht erlaubt.';
     Store.setSettings({ [k]: !!v });
     pushState();
@@ -493,5 +539,7 @@ app.whenReady().then(async () => {
   const hidden = process.argv.includes('--hidden');
   createMain(!hidden);
   if (Store.setting('botWanted')) startBot();
+  setTimeout(() => checkUpdate(false), 30000);
+  setInterval(() => checkUpdate(false), 6 * 3600 * 1000);
   setInterval(pushState, 5000);
 });

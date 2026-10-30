@@ -101,6 +101,7 @@ class BotService : Service() {
             } catch (e: Exception) {
                 Store.setStatus(ctx, "Fehler im Dauerbetrieb: ${e.message}")
             }
+            Updater.checkQuietly(ctx, 6)
             update(null)
             delay(15_000L)
         }
