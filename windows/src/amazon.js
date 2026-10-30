@@ -76,10 +76,10 @@ function fillScript(email, pw) {
     "var m=document.querySelector('#ap_email,#ap_email_login,input[name=\"email\"]');" +
     "if(m&&m.type!=='hidden'&&!m.value){set(m," + JSON.stringify(email) + ');}';
   if (pw == null) {
-    s += "var c=first(['#continue input','input#continue','#continue']);if(c){c.click();}";
+    s += "var c=first(['#continue input','input#continue','#continue']);if(!c&&m&&m.form)c=m.form.querySelector('input[type=submit],button[type=submit],.a-button-input');if(c){c.click();}";
   } else {
     s += "var p=document.getElementById('ap_password');if(p){set(p," + JSON.stringify(pw) + ');}' +
-      "var b=first(['input#signInSubmit','#signInSubmit input','#signInSubmit']);if(b){b.click();}";
+      "var b=first(['input#signInSubmit','#signInSubmit input','#signInSubmit']);if(!b&&p&&p.form)b=p.form.querySelector('input[type=submit],button[type=submit],.a-button-input');if(b){b.click();}";
   }
   return s + '})();';
 }
@@ -121,7 +121,7 @@ function explain(st) {
     case State.CAPTCHA: return 'Amazon zeigt bei der Anmeldung ein Captcha – einmal über „Im Bot-Browser anmelden“ lösen';
     case State.OTP: return 'Amazon verlangt einen Bestätigungscode – einmal über „Im Bot-Browser anmelden“ eingeben';
     case State.VERIFY: return 'Amazon will die Anmeldung bestätigt haben (App/SMS/E-Mail) – einmal über „Im Bot-Browser anmelden“ bestätigen';
-    case State.GAVE_UP: return 'Automatische Anmeldung hat nicht geklappt (Passwort prüfen)';
+    case State.GAVE_UP: return 'Automatische Anmeldung hat nicht geklappt – bitte einmal selbst unter „🔑 Konten & Passwörter“ → Amazon → „Im Bot-Browser anmelden“ (dabei „Angemeldet bleiben“ anhaken)';
     default: return 'Amazon verlangt eine Anmeldung';
   }
 }
@@ -245,6 +245,7 @@ async function runBuy(asin, { dryRun, visible, beforeStart }) {
   /** „Bitte aktiviere Cookies“: Sitzung neu holen und noch einmal von vorn; beim 2. Mal aufgeben. */
   const cookieRetry = async () => {
     cookieRetries++;
+    Object.assign(sess, newSession());
     Log.add('Amazon: Seite „Bitte aktiviere Cookies“');
     if (cookieRetries > 1) {
       return { outcome: Outcome.NOT_LOGGED_IN, detail: 'Amazon meldet „Bitte aktiviere Cookies“ – einmal unter „🔑 Konten & Passwörter“ → Amazon → „Im Bot-Browser anmelden“, danach Probelauf wiederholen' };
