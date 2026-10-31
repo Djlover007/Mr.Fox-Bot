@@ -335,8 +335,8 @@ function loginCard(key, title, hint, loginUrl) {
         mail.value = ''; pw.value = '';
         return call('clearLogin', key);
       }, 'danger'),
-      key === 'amazon' && S.settings.amazonChrome !== false
-        ? act('🔐 In Chrome anmelden', () => call('chromeLogin'), 'primary')
+      (key === 'amazon' || key === 'payback') && S.settings.amazonChrome !== false
+        ? act('🔐 In Chrome anmelden', () => (key === 'amazon' ? call('chromeLogin') : call('chromeOpen', loginUrl)), 'primary')
         : act('🔐 Im Bot-Browser anmelden', () => call('openInApp', loginUrl))));
 }
 function renderLogins() {

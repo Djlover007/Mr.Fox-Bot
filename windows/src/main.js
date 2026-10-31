@@ -414,7 +414,12 @@ const api = {
   clearAlerts: () => { Store.clearAlerts(); pushState(); },
   copyReport: () => { clipboard.writeText('Mr.Fox Ablauf (Windows ' + app.getVersion() + ')\n' + Log.text()); return 'Ablauf des letzten Probelaufs/Kaufs kopiert.'; },
   paybackTest: async (key) => {
-    const w = B.watchWindow('Payback-Test …', A.reportOf);
+    let w;
+    if (A.useChrome()) {
+      try { w = await require('./chrome').openTab(A.chromeOpts({ foreground: true })); } catch (e) { return '⚠️ ' + e.message; }
+    } else {
+      w = B.watchWindow('Payback-Test …', A.reportOf);
+    }
     Log.start('Payback-Test ' + key);
     const r = await Payback.activate(w.webContents, key, (s) => { if (!w.isDestroyed()) w.setTitle('Payback-Test: ' + s); });
     if (!w.isDestroyed()) w.setTitle('Payback-Test: ' + (r.ok ? '✅ Weiterleitung zum Shop klappt' : '⚠️ ' + r.detail));
@@ -493,6 +498,15 @@ const api = {
       return { items: await Telegram.test(5) };
     } catch (e) {
       return { error: e.message };
+    }
+  },
+  chromeOpen: async (url) => {
+    try {
+      const t = await require('./chrome').openTab(A.chromeOpts({ url, foreground: true }));
+      WebWin.autofill(t.webContents, url);
+      return 'Chrome ist offen – dort selbst anmelden („Angemeldet bleiben“ anhaken). Der Bot benutzt danach diese Anmeldung.';
+    } catch (e) {
+      return '⚠️ ' + e.message;
     }
   },
   chromeLogin: async () => {

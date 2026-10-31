@@ -38,12 +38,15 @@ function open(url, { checkout = false, forceInApp = false } = {}) {
     return null;
   }
   const A = require('./amazon');
-  // Amazon-Seiten im Bot-Chrome öffnen (dort ist der Bot bei Amazon angemeldet)
-  if (A.useChrome() && /(^|\.)amazon\.[a-z.]+$/i.test((() => { try { return new URL(url).hostname; } catch (e) { return ''; } })())) {
-    require('./chrome').openTab(A.chromeOpts({ url, foreground: true })).catch((e) => {
-      const { dialog } = require('electron');
-      dialog.showErrorBox('Chrome', e.message);
-    });
+  // Amazon- und Payback-Seiten im Bot-Chrome öffnen (dort ist der Bot angemeldet; der eingebaute Browser
+  // wird von Amazon („Cookies aktivieren“) und Payback (Cloudflare-Prüfung) abgelehnt)
+  if (inChrome(url)) {
+    require('./chrome').openTab(A.chromeOpts({ url, foreground: true }))
+      .then((t) => { autofill(t.webContents, url); })
+      .catch((e) => {
+        const { dialog } = require('electron');
+        dialog.showErrorBox('Chrome', e.message);
+      });
     return null;
   }
   const w = B.newWindow({ show: true, title: 'Mr.Fox Bot – Browser', width: 1280, height: 950 });
@@ -86,8 +89,43 @@ function open(url, { checkout = false, forceInApp = false } = {}) {
  * Über Payback öffnen: zuerst die Payback-Shopseite im Bot-Browser („Jetzt shoppen“ drückt der Bot),
  * danach die (saubere) Produktseite im selben Fenster – so werden °Punkte gutgeschrieben.
  */
+/** Gehört diese Adresse ins Bot-Chrome? (Amazon, Payback, PayPal – wenn „über Google Chrome“ an ist) */
+function inChrome(url) {
+  const A = require('./amazon');
+  if (!A.useChrome()) return false;
+  let h = '';
+  try { h = new URL(url).hostname; } catch (e) { return false; }
+  return /(^|\.)(amazon\.[a-z.]+|payback\.de)$/i.test(h);
+}
+
 function openViaPayback(key, url) {
   const Payback = require('./payback');
+  const A = require('./amazon');
+  if (A.useChrome()) {
+    // Payback-Shopseite und Produkt im Bot-Chrome (gleiche Sitzung → °Punkte)
+    (async () => {
+      let t;
+      try {
+        t = await require('./chrome').openTab(A.chromeOpts({ foreground: true }));
+      } catch (e) {
+        const { dialog } = require('electron');
+        dialog.showErrorBox('Chrome', e.message);
+        return;
+      }
+      const wc = t.webContents;
+      const r = await Payback.activate(wc, key, (s) => t.setTitle('Payback: ' + s));
+      if (t.isDestroyed()) return;
+      if (!r.ok && /nicht angemeldet/.test(r.detail)) {
+        clipboard.writeText(url);
+        autofill(wc, wc.getURL());
+        t.setTitle('Bitte im Chrome-Fenster bei Payback anmelden, dann „Jetzt shoppen“ – der Produkt-Link ist kopiert');
+        return;
+      }
+      B.load(wc, url);
+      t.setTitle(r.ok ? '💳 über Payback geöffnet (°Punkte)' : '⚠️ ohne Payback: ' + r.detail);
+    })();
+    return null;
+  }
   const w = B.newWindow({ show: true, title: 'Mr.Fox Bot – öffne über Payback …', width: 1280, height: 950 });
   const wc = w.webContents;
   wc.on('did-finish-load', () => autofill(wc, wc.getURL()));
@@ -112,4 +150,4 @@ function openViaPayback(key, url) {
   return w;
 }
 
-module.exports = { open, openViaPayback, autofill };
+module.exports = { open, openViaPayback, autofill, inChrome };
