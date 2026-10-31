@@ -185,18 +185,21 @@ async function openTab(opts) {
   const s = await cdp(t.webSocketDebuggerUrl);
   let url = t.url || opts.url || 'about:blank';
   let loading = !!opts.url;
+  let loadingSince = Date.now();
+  let mainFrame = null; // nur der Hauptrahmen zählt (Werbe-iframes laden ständig nach)
   let title = '';
   let destroyed = false;
   const closedCbs = [];
   s.onEvent((m, p) => {
-    if (m === 'Page.frameNavigated' && p.frame && !p.frame.parentId) url = p.frame.url + (p.frame.urlFragment || '');
-    if (m === 'Page.navigatedWithinDocument') url = p.url;
-    if (m === 'Page.frameStartedLoading') loading = true;
-    if (m === 'Page.frameStoppedLoading' || m === 'Page.loadEventFired') loading = false;
+    if (m === 'Page.frameNavigated' && p.frame && !p.frame.parentId) { mainFrame = p.frame.id; url = p.frame.url + (p.frame.urlFragment || ''); }
+    if (m === 'Page.navigatedWithinDocument' && (!mainFrame || p.frameId === mainFrame)) url = p.url;
+    if (m === 'Page.frameStartedLoading' && (!mainFrame || p.frameId === mainFrame)) { loading = true; loadingSince = Date.now(); }
+    if ((m === 'Page.frameStoppedLoading' && (!mainFrame || p.frameId === mainFrame)) || m === 'Page.loadEventFired' || m === 'Page.domContentEventFired') loading = false;
     if (m === 'Inspector.detached' || m === 'Target.targetDestroyed') { destroyed = true; }
   });
   s.onClose(() => { destroyed = true; closedCbs.forEach((f) => f()); });
   await s.send('Page.enable');
+  try { mainFrame = (await s.send('Page.getFrameTree')).frameTree.frame.id; } catch (e) { /* kommt mit dem ersten Seitenwechsel */ }
   if (opts.foreground) s.send('Page.bringToFront').catch(() => {});
   // Ist die Seite schon fertig geladen?
   s.send('Runtime.evaluate', { expression: 'document.readyState+"|"+location.href', returnByValue: true })
@@ -205,9 +208,10 @@ async function openTab(opts) {
   const wc = {
     isDestroyed: () => destroyed,
     getURL: () => url,
-    isLoading: () => loading,
+    // nie länger als 15 s „lädt noch“ melden (manche Seiten laden endlos nach)
+    isLoading: () => loading && Date.now() - loadingSince < 15000,
     getTitle: () => title,
-    loadURL: async (u) => { loading = true; url = u; await s.send('Page.navigate', { url: u }); },
+    loadURL: async (u) => { loading = true; loadingSince = Date.now(); url = u; await s.send('Page.navigate', { url: u }); },
     reload: () => s.send('Page.reload').catch(() => {}),
     executeJavaScript: async (code) => {
       const r = await s.send('Runtime.evaluate', { expression: code, returnByValue: true, awaitPromise: true });

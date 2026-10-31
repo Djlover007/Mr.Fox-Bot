@@ -458,6 +458,7 @@ async function runCart(asin, offerId) {
   let polls = 0;
   let t11 = 0;
   let count0 = -1;
+  let lastUrl = '';
   let wasLogin = false;
   let reloaded = false;
   const sess = newSession();
@@ -480,6 +481,7 @@ async function runCart(asin, offerId) {
       if (w.isDestroyed()) return { result: 'FAILED', detail: 'Fenster geschlossen' };
       if (wc.isLoading()) { await B.sleep(800); continue; }
       const url = wc.getURL();
+      if (url !== lastUrl) { lastUrl = url; Log.add('Seite: ' + url.split('?')[0]); }
       if (url.includes('validateCaptcha') || url.includes('/errors/')) return done('FAILED', CAPTCHA_DETAIL);
       if (isLoginUrl(url)) {
         wasLogin = true;
