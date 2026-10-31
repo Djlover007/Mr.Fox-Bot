@@ -141,6 +141,15 @@ function paybackStarter(shopKey, note) {
   };
 }
 
+/** Payback vor dem automatischen Warenkorb (Amazon, wenn Payback für Amazon angehakt ist). */
+function paybackCartStarter(shopKey, note) {
+  if (!Store.payback(shopKey) || !Payback.supports(shopKey)) return null;
+  return async (wc, status) => {
+    const r = await Payback.activate(wc, shopKey, status);
+    note.text = r.ok ? '💳 Über Payback (°Punkte beim Kauf)' : '💳 Ohne Payback: ' + r.detail;
+  };
+}
+
 async function handle(domain, dropPct, id, r) {
   const autoBuyOn = !!Store.setting('autoBuy');
   let offerEvent = null;
@@ -224,7 +233,9 @@ async function handle(domain, dropPct, id, r) {
   } else if (Store.setting('autoCart')) {
     let res;
     try {
-      res = ws ? await ShopBuyer.addToCart(ws, url, id) : await A.addToCart(id, product ? Store.cartOffer(product) : null);
+      var cartNote = { text: '' };
+      res = ws ? await ShopBuyer.addToCart(ws, url, id)
+        : await A.addToCart(id, product ? Store.cartOffer(product) : null, { beforeStart: paybackCartStarter('amazon', cartNote) });
     } catch (e) {
       res = { result: 'FAILED', detail: e.message || 'Fehler' };
     }
@@ -232,6 +243,7 @@ async function handle(domain, dropPct, id, r) {
     message += res.result === 'OK' ? '\n✅ Automatisch in den Warenkorb gelegt'
       : res.result === 'NOT_LOGGED_IN' ? '\n⚠️ Nicht angemeldet: ' + res.detail
         : `\n⚠️ Automatisch in den Warenkorb legen hat nicht geklappt (${res.detail}) – nutze den Link`;
+    if (cartNote && cartNote.text) message += '\n' + cartNote.text;
   }
 
   const checkout = ws ? ws.cartUrl : A.checkoutUrl();
@@ -310,7 +322,9 @@ async function telegramDeal(d) {
         const ws = t.shop === 'amazon' ? null : Shops.byKey(t.shop);
         let res;
         try {
-          res = ws ? await ShopBuyer.addToCart(ws, t.url, id) : await A.addToCart(id, null);
+          const pbNote = { text: '' };
+          res = ws ? await ShopBuyer.addToCart(ws, t.url, id) : await A.addToCart(id, null, { beforeStart: Store.setting('tgPayback') !== false ? paybackCartStarter('amazon', pbNote) : null });
+          if (pbNote.text) lines.push(pbNote.text);
         } catch (e) {
           res = { result: 'FAILED', detail: e.message || 'Fehler' };
         }

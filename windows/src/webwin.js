@@ -123,6 +123,10 @@ function openViaPayback(key, url) {
       }
       B.load(wc, url);
       t.setTitle(r.ok ? '💳 über Payback geöffnet (°Punkte)' : '⚠️ ohne Payback: ' + r.detail);
+      if (key === 'amazon') {
+        const c = await A.addOnOpenPage(wc);
+        t.setTitle((r.ok ? '💳 über Payback' : '⚠️ ohne Payback') + (c.ok ? ' – ✅ in den Warenkorb gelegt' : ' – Warenkorb: ' + c.detail));
+      }
     })();
     return null;
   }
@@ -146,6 +150,10 @@ function openViaPayback(key, url) {
     }
     B.load(wc, url);
     w.setTitle(r.ok ? 'Mr.Fox Bot – 💳 über Payback geöffnet (°Punkte)' : 'Mr.Fox Bot – ⚠️ ohne Payback: ' + r.detail);
+    if (key === 'amazon') {
+      const c = await A.addOnOpenPage(wc);
+      if (!w.isDestroyed()) w.setTitle('Mr.Fox Bot – ' + (r.ok ? '💳 über Payback' : '⚠️ ohne Payback') + (c.ok ? ' – ✅ in den Warenkorb gelegt' : ' – Warenkorb: ' + c.detail));
+    }
   })();
   return w;
 }

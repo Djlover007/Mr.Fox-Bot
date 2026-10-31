@@ -427,8 +427,8 @@ function checkoutUrl() { return `https://www.${Store.setting('domain')}/gp/cart/
 function ordersUrl() { return `https://www.${Store.setting('domain')}/gp/your-account/order-history`; }
 
 /** Legt den Artikel in den Warenkorb. Ergebnis {result: 'OK'|'NOT_LOGGED_IN'|'FAILED', detail}. */
-function addToCart(asin, offerId) {
-  return exclusive(() => runCart(asin, offerId));
+function addToCart(asin, offerId, opts) {
+  return exclusive(() => runCart(asin, offerId, opts || {}));
 }
 
 /** Anzahl im Warenkorb-Symbol (−1 = nicht gefunden) und ob die Seite „hinzugefügt“ meldet. */
@@ -447,7 +447,7 @@ const AWS_CONFIRM2_JS = "(function(){if(document.getElementById('captchacharacte
   "for(var j=0;j<bs.length;j++){var t=((bs[j].value||bs[j].innerText||'')+'').trim();if(/^(weiter|continue|in den einkaufswagen|in den warenkorb|hinzufügen)$/i.test(t)){bs[j].click();return 'clicked';}}" +
   "return 'none';})()";
 
-async function runCart(asin, offerId) {
+async function runCart(asin, offerId, { beforeStart } = {}) {
   const productUrl = `https://www.${Store.setting('domain')}/dp/${asin}`;
   const fastUrl = offerId ? cartUrl(asin, offerId) : null;
   let fastFailed = !fastUrl;
@@ -479,6 +479,7 @@ async function runCart(asin, offerId) {
   const isCartPage = (u) => /\/(gp\/)?cart\/view|\/cart\/?(\?|$)|\/cart\/smart-wagon/.test(u);
   try {
     if (!w.isChrome) await ensureSession(wc);
+    if (beforeStart) await beforeStart(wc, (s) => { Log.add(s); w.setTitle(s); });
     start();
     await B.sleep(2000);
     while (Date.now() < deadline) {
@@ -572,7 +573,27 @@ async function reportOf(wc) {
   return `Mr.Fox Seitenbericht (Windows ${require('electron').app.getVersion()})\n${page}\n${await cookieReport(wc)}\n--- Ablauf\n${Log.text()}`;
 }
 
+/**
+ * Auf einer bereits geöffneten Amazon-Produktseite „In den Einkaufswagen“ drücken und prüfen
+ * (z. B. nach „Über Payback öffnen“). Gibt {ok, detail} zurück.
+ */
+async function addOnOpenPage(wc) {
+  for (let i = 0; i < 20 && (wc.isLoading() || !/\/(dp|gp\/product)\//.test(wc.getURL())); i++) await B.sleep(1000);
+  if (!/\/(dp|gp\/product)\//.test(wc.getURL())) return { ok: false, detail: 'keine Produktseite' };
+  await B.sleep(1000);
+  const before = B.parse(await B.js(wc, CART_STATE_JS)).n;
+  const res = await B.js(wc, CLICK_JS);
+  if (res !== 'clicked') return { ok: false, detail: res === 'captcha' ? 'Captcha' : 'kein „In den Einkaufswagen“-Knopf' };
+  for (let i = 0; i < 12; i++) {
+    await B.sleep(1500);
+    const cs = B.parse(await B.js(wc, CART_STATE_JS));
+    if (cs.ok || (before >= 0 && cs.n > before) || /\/huc\/|\/cart\/|smart-wagon/.test(wc.getURL())) return { ok: true, detail: 'in den Warenkorb gelegt' };
+  }
+  return { ok: false, detail: 'keine Bestätigung von Amazon' };
+}
+
 module.exports = {
+  addOnOpenPage,
   Outcome, describe, money, State, newSession, loginStep, explain, isAmazon, isLoginUrl, useChrome, chromeOpts,
   buy, addToCart, exclusive, cartUrl, checkoutUrl, ordersUrl, encodeOffer, reportOf, FIND_TOTAL_JS,
 };

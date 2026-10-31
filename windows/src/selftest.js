@@ -306,6 +306,9 @@ async function run() {
     let pu = '';
     for (let i = 0; i < 30 && !pu.includes('mock-amazon.test/dp/'); i++) { await B.sleep(1000); pu = pw.isDestroyed() ? '' : pw.webContents.getURL(); }
     check('Payback: erst Payback-Seite, dann Produkt', pu === 'https://www.mock-amazon.test/dp/B000TEST01', pu + ' | ' + (pw.isDestroyed() ? '' : pw.getTitle()));
+    let pt = '';
+    for (let i = 0; i < 25 && !/Warenkorb/.test(pt); i++) { await B.sleep(1000); pt = pw.isDestroyed() ? '' : pw.getTitle(); }
+    check('Payback: danach automatisch in den Warenkorb', /✅ in den Warenkorb gelegt/.test(pt), pt);
     if (!pw.isDestroyed()) pw.destroy();
     check('Telegram: Alarm erzeugt', Store.alerts().some((a) => /📣 Telegram @MockDeals/.test(a.text) && /FOX10/.test(a.text)), (Store.alerts()[0] || {}).text);
     // gleicher Deal in einem zweiten Kanal (weitergeleitet) → kein zweiter Alarm
