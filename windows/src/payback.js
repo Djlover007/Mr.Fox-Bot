@@ -32,7 +32,15 @@ if(c){c.click();return 'cookie';}
 var pw=document.querySelector('input[type=password]');if(pw&&vis(pw))return 'login';
 if(/\/login/i.test(location.pathname))return 'login';
 var go=find(/^(jetzt shoppen|jetzt einkaufen|zum shop|zum online-?shop|weiter zum shop|zum partner|°?punkte sammeln|jetzt °?punkte sammeln|shoppen & °?punkte sammeln|zu amazon|zu mediamarkt|zu baur)/i);
-if(go){go.click();return 'go:'+txt(go).slice(0,30);}
+if(go){
+ // Payback öffnet den Shop oft in einem NEUEN Tab – im selben Tab öffnen, damit der Bot ihn sieht
+ window.open=function(u){if(u){location.href=u;}return window;};
+ var a=go.closest('a[href]')||go;
+ if(a.getAttribute&&a.getAttribute('target'))a.removeAttribute('target');
+ var f=go.closest('form');if(f&&f.getAttribute('target'))f.removeAttribute('target');
+ var h=a.getAttribute&&a.getAttribute('href');
+ if(h&&/^https?:|^\//i.test(h)&&!/^#/.test(h)){location.href=a.href;}else{go.click();}
+ return 'go:'+txt(go).slice(0,30)+(h?' → '+h.slice(0,60):'');}
 if(/anmelden|einloggen/i.test((document.body&&document.body.innerText||'').slice(0,3000))&&find(/^(anmelden|einloggen|login)$/i))return 'login';
 return 'wait';})()`;
 
@@ -48,6 +56,8 @@ async function activate(wc, key, status) {
   B.load(wc, p.page);
   await B.sleep(3000);
   let clicked = 0;
+  let lastStep = '';
+  let lastHost = '';
   const end = Date.now() + 45000;
   while (Date.now() < end) {
     let host = '';
@@ -57,21 +67,23 @@ async function activate(wc, key, status) {
       await B.sleep(2000);
       return { ok: true, detail: '💳 Über Payback gestartet' };
     }
+    lastHost = host;
     if (!wc.isLoading() && /payback\./i.test(host)) {
       const r = (await B.js(wc, STEP_JS)) || '';
+      lastStep = r;
       Log.add('Payback: ' + r);
       if (r === 'login') return { ok: false, detail: 'Payback nicht angemeldet – einmal „Bei Payback anmelden“' };
       if (r.startsWith('go:')) {
         clicked++;
         status && status('Payback: Weiterleitung zum Shop …');
-        if (clicked > 3) return { ok: false, detail: 'Payback-Weiterleitung hat nicht geklappt' };
+        if (clicked > 3) return { ok: false, detail: `Payback-Weiterleitung hat nicht geklappt (Knopf gedrückt: ${r.slice(3)}, Seite bleibt ${host})` };
         await B.sleep(4000);
         continue;
       }
     }
     await B.sleep(1500);
   }
-  return { ok: false, detail: 'Payback-Weiterleitung: Zeitüberschreitung' };
+  return { ok: false, detail: `Payback-Weiterleitung: Zeitüberschreitung (zuletzt auf ${lastHost || '?'}: ${lastStep === 'wait' ? 'kein „Jetzt shoppen“-Knopf gefunden' : lastStep || '–'})` };
 }
 
 module.exports = { PARTNERS, supports, activate, LOGIN_URL };
