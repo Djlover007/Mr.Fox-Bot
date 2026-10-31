@@ -46,6 +46,7 @@ function newWindow({ show = false, title = 'Mr.Fox Bot', width = 1200, height = 
       nodeIntegration: false,
     },
   });
+  chromeLike(w.webContents);
   w.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/i.test(url)) setImmediate(() => { if (!w.isDestroyed()) load(w.webContents, url); });
     return { action: 'deny' };
@@ -56,6 +57,36 @@ function newWindow({ show = false, title = 'Mr.Fox Bot', width = 1200, height = 
   // Seitentitel nicht über den Fenstertitel (Status) schreiben lassen
   w.on('page-title-updated', (e) => e.preventDefault());
   return w;
+}
+
+/**
+ * Wie ein echtes Google Chrome auftreten: Electron meldet in den „Client Hints“ (sec-ch-ua, navigator.userAgentData)
+ * nur „Chromium“ – echtes Chrome zusätzlich „Google Chrome“. Manche Seiten (z. B. Amazon-Anmeldung) lehnen das ab.
+ */
+function chromeLike(wc) {
+  try {
+    const ua = cleanUA(ses().getUserAgent());
+    const full = (/Chrome\/([\d.]+)/.exec(ua) || [])[1] || '130.0.0.0';
+    const major = full.split('.')[0];
+    const win = process.platform === 'win32';
+    if (!wc.debugger.isAttached()) wc.debugger.attach('1.3');
+    wc.debugger.sendCommand('Emulation.setUserAgentOverride', {
+      userAgent: ua,
+      acceptLanguage: 'de-DE,de;q=0.9,en;q=0.7',
+      platform: win ? 'Win32' : 'Linux x86_64',
+      userAgentMetadata: {
+        brands: [{ brand: 'Chromium', version: major }, { brand: 'Google Chrome', version: major }, { brand: 'Not?A_Brand', version: '99' }],
+        fullVersionList: [{ brand: 'Chromium', version: full }, { brand: 'Google Chrome', version: full }, { brand: 'Not?A_Brand', version: '99.0.0.0' }],
+        platform: win ? 'Windows' : 'Linux',
+        platformVersion: win ? '15.0.0' : '6.0.0',
+        architecture: 'x86',
+        model: '',
+        mobile: false,
+        bitness: '64',
+        wow64: false,
+      },
+    }).catch(() => {});
+  } catch (e) { /* ohne geht es auch */ }
 }
 
 function load(wc, url) {
@@ -105,4 +136,4 @@ function watchWindow(title, reportFn) {
   return w;
 }
 
-module.exports = { PARTITION, ICON, sleep, cleanUA, ses, setupSession, newWindow, load, js, parse, watchWindow };
+module.exports = { chromeLike, PARTITION, ICON, sleep, cleanUA, ses, setupSession, newWindow, load, js, parse, watchWindow };

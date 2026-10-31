@@ -468,9 +468,26 @@ async function runCart(asin, offerId) {
   }
 }
 
+/** Cookie-Diagnose (nur Namen, keine Werte): sind Amazon-Cookies gespeichert und kommen sie in der Seite an? */
+async function cookieReport(wc) {
+  const out = ['--- Cookies'];
+  try {
+    const d = String(Store.setting('domain'));
+    const cs = await B.ses().cookies.get({ domain: d });
+    out.push(`Gespeichert für ${d}: ${cs.length} (${cs.map((c) => c.name + (c.name === 'session-id' ? '=' + String(c.value).slice(0, 7) + '…' : '')).slice(0, 25).join(', ')})`);
+  } catch (e) { out.push('Speicher nicht lesbar: ' + e.message); }
+  const pg = await B.js(wc, "(function(){var r=[];r.push('cookieEnabled='+navigator.cookieEnabled);" +
+    "try{document.cookie='mrfox_test=1; path=/';r.push('Test-Cookie='+(document.cookie.indexOf('mrfox_test=1')>=0?'ok':'NICHT gespeichert'));}catch(e){r.push('Test-Cookie Fehler '+e.message);}" +
+    "r.push('In der Seite: '+document.cookie.split(';').map(function(c){return c.split('=')[0].trim();}).filter(Boolean).slice(0,25).join(', '));" +
+    "try{r.push('Kennung: '+(navigator.userAgentData?navigator.userAgentData.brands.map(function(b){return b.brand;}).join('/'):'-'));}catch(e){}" +
+    "return r.join('\\n');})()");
+  out.push(pg || 'Seite nicht lesbar');
+  return out.join('\n');
+}
+
 async function reportOf(wc) {
   const page = (await B.js(wc, REPORT_JS)) || 'Seite nicht lesbar';
-  return `Mr.Fox Seitenbericht (Windows ${require('electron').app.getVersion()})\n${page}\n--- Ablauf\n${Log.text()}`;
+  return `Mr.Fox Seitenbericht (Windows ${require('electron').app.getVersion()})\n${page}\n${await cookieReport(wc)}\n--- Ablauf\n${Log.text()}`;
 }
 
 module.exports = {

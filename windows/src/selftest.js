@@ -194,6 +194,13 @@ async function run() {
     check('Amazon: neue Anmeldeseite → wartet auf Anmeldung von Hand, dann weiter', lw && untouched === '' && res.outcome === 'DRY_RUN_OK', (lw ? 'Feld: „' + untouched + '“ ' : 'kein Wartefenster ') + A.describe(res));
     BrowserWindow.getAllWindows().forEach((x) => { if (/Fertig/.test(x.getTitle())) x.destroy(); });
 
+    // Wie echtes Chrome: Client Hints mit „Google Chrome“, Cookies in der Seite
+    const cw = B.newWindow({ show: false });
+    await cw.webContents.loadURL('https://www.mock-amazon.test/dp/B000TEST01').catch(() => {});
+    const rep = await A.reportOf(cw.webContents);
+    check('Browser: Kennung „Google Chrome“ + Cookie-Diagnose', /Google Chrome/.test(rep) && /Test-Cookie=ok/.test(rep), (rep.split('--- Cookies')[1] || '').split('--- Ablauf')[0].replace(/\n/g, ' | '));
+    cw.destroy();
+
     // 5) Amazon-Warenkorb per OfferListingId
     const c = await A.addToCart('B000TEST01', 'ABC+def123');
     check('Amazon-Warenkorb (OfferListingId)', c.result === 'OK', c.detail);
