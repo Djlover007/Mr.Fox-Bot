@@ -473,6 +473,10 @@ async function runCart(asin, offerId) {
   };
   const fallback = (why) => { Log.add('Schneller Weg klappt nicht (' + why + ') – nehme Produktseite'); fastFailed = true; start(); };
   const cartState = async () => B.parse(await B.js(wc, CART_STATE_JS));
+  /** Liegt der Artikel wirklich im Warenkorb? (Warenkorbseite: Artikelzeile mit dieser ASIN) */
+  const inCart = async () => (await B.js(wc, "(function(){var c=document.querySelector('#sc-active-cart,#activeCartViewForm,[data-name=\\\"Active Items\\\"]')||document;" +
+    "return !!c.querySelector('[data-asin=\\\"" + asin + "\\\"]')||(c.innerHTML||'').indexOf('" + asin + "')>=0;})()")) === true;
+  const isCartPage = (u) => /\/(gp\/)?cart\/view|\/cart\/?(\?|$)|\/cart\/smart-wagon/.test(u);
   try {
     if (!w.isChrome) await ensureSession(wc);
     start();
@@ -507,12 +511,19 @@ async function runCart(asin, offerId) {
         } else {
           // Amazon hat direkt weitergeleitet (z. B. add-res oder Warenkorb)
           const cs = await cartState();
-          if (cs.ok || /\/huc\/|\/cart|add-res|smart-wagon/.test(url)) return done('OK', 'Angebot per OfferListingId in den Warenkorb gelegt');
-          if (Date.now() - t11 > 12000) fallback('Seite: ' + url.split('?')[0]);
+          if (isCartPage(url)) {
+            if (await inCart()) return done('OK', 'Angebot per OfferListingId in den Warenkorb gelegt (im Warenkorb geprüft)');
+            fallback('Warenkorb geöffnet, Artikel aber nicht drin');
+          } else if (cs.ok || /\/huc\/|add-res|smart-wagon/.test(url)) {
+            return done('OK', 'Angebot per OfferListingId in den Warenkorb gelegt');
+          } else if (Date.now() - t11 > 12000) fallback('Seite: ' + url.split('?')[0]);
         }
       } else if (stage === 11) {
         const cs = await cartState();
-        if (cs.ok || (!onAws && /\/huc\/|\/cart|add-res|smart-wagon/.test(url))) return done('OK', 'Angebot per OfferListingId in den Warenkorb gelegt');
+        if (!onAws && isCartPage(url)) {
+          if (await inCart()) return done('OK', 'Angebot per OfferListingId in den Warenkorb gelegt (im Warenkorb geprüft)');
+          fallback('Warenkorb geöffnet, Artikel aber nicht drin');
+        } else if (cs.ok || (!onAws && /\/huc\/|add-res|smart-wagon/.test(url))) return done('OK', 'Angebot per OfferListingId in den Warenkorb gelegt');
         if (Date.now() - t11 > 15000) fallback('keine Bestätigung');
       } else if (stage === 0 && url.includes('/dp/')) {
         await B.sleep(1000);
