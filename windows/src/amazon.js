@@ -431,35 +431,60 @@ function addToCart(asin, offerId) {
   return exclusive(() => runCart(asin, offerId));
 }
 
+/** Anzahl im Warenkorb-Symbol (−1 = nicht gefunden) und ob die Seite „hinzugefügt“ meldet. */
+const CART_STATE_JS = "(function(){var e=document.getElementById('nav-cart-count');var n=e?parseInt((e.textContent||'').replace(/\\D/g,''),10):-1;" +
+  "var t=(document.body&&document.body.innerText||'').slice(0,20000);" +
+  "var ok=/in den einkaufswagen gelegt|zum einkaufswagen hinzugefügt|in den warenkorb gelegt|zum warenkorb hinzugefügt|added to (your )?cart|wurde hinzugefügt/i.test(t);" +
+  "var ids=['NATC_SMART_WAGON_CONF_MSG_SUCCESS','sw-atc-confirmation','huc-v2-order-row-confirm-text','attachDisplayAddBaseAlert','sw-atc-details-single-container','attach-accessory-pane','attach-added-to-cart-message'];" +
+  "for(var i=0;i<ids.length;i++){if(document.getElementById(ids[i]))ok=true;}" +
+  "return JSON.stringify({n:isNaN(n)?-1:n,ok:ok});})()";
+
+/** Bestätigungsseite des Warenkorb-Links: Knopf „Weiter/In den Einkaufswagen“ (auch per Beschriftung). */
+const AWS_CONFIRM2_JS = "(function(){if(document.getElementById('captchacharacters')||document.querySelector('form[action*=\\\"validateCaptcha\\\"]'))return 'captcha';" +
+  "var sel=['input[name=\\\"add\\\"]','form[action*=\\\"cart/add\\\"] input[type=\\\"submit\\\"]','form[action*=\\\"cart\\\"] input[type=\\\"image\\\"]'];" +
+  "for(var i=0;i<sel.length;i++){var b=document.querySelector(sel[i]);if(b){b.click();return 'clicked';}}" +
+  "var bs=document.querySelectorAll('input[type=submit],button,a.a-button-text,span.a-button-inner input');" +
+  "for(var j=0;j<bs.length;j++){var t=((bs[j].value||bs[j].innerText||'')+'').trim();if(/^(weiter|continue|in den einkaufswagen|in den warenkorb|hinzufügen)$/i.test(t)){bs[j].click();return 'clicked';}}" +
+  "return 'none';})()";
+
 async function runCart(asin, offerId) {
   const productUrl = `https://www.${Store.setting('domain')}/dp/${asin}`;
   const fastUrl = offerId ? cartUrl(asin, offerId) : null;
   let fastFailed = !fastUrl;
+  Log.start('Amazon-Warenkorb: ' + productUrl + (offerId ? ' (OfferListingId)' : ''));
   const w = await openAmazonWindow(false, 'Amazon-Warenkorb …');
   const wc = w.webContents;
   let stage = 0;
   let polls = 0;
   let t11 = 0;
+  let count0 = -1;
   let wasLogin = false;
   let reloaded = false;
   const sess = newSession();
   const deadline = Date.now() + 90000;
-  const done = (result, detail) => { if (!w.isDestroyed()) w.destroy(); return { result, detail }; };
-  const start = () => {
-    if (!fastFailed && fastUrl) { stage = 10; B.load(wc, fastUrl); } else { stage = 0; B.load(wc, productUrl); }
+  const done = (result, detail) => {
+    Log.add(`Ergebnis: ${result} – ${detail}`);
+    if (!w.isDestroyed()) w.destroy();
+    return { result, detail };
   };
+  const start = () => {
+    if (!fastFailed && fastUrl) { stage = 10; t11 = Date.now(); Log.add('Warenkorb-Link mit OfferListingId'); B.load(wc, fastUrl); } else { stage = 0; Log.add('Produktseite'); B.load(wc, productUrl); }
+  };
+  const fallback = (why) => { Log.add('Schneller Weg klappt nicht (' + why + ') – nehme Produktseite'); fastFailed = true; start(); };
+  const cartState = async () => B.parse(await B.js(wc, CART_STATE_JS));
   try {
     if (!w.isChrome) await ensureSession(wc);
     start();
     await B.sleep(2000);
     while (Date.now() < deadline) {
+      if (w.isDestroyed()) return { result: 'FAILED', detail: 'Fenster geschlossen' };
       if (wc.isLoading()) { await B.sleep(800); continue; }
       const url = wc.getURL();
       if (url.includes('validateCaptcha') || url.includes('/errors/')) return done('FAILED', CAPTCHA_DETAIL);
       if (isLoginUrl(url)) {
         wasLogin = true;
         if (url.includes('/ax/')) return done('NOT_LOGGED_IN', NEW_LOGIN_HINT);
-        if ((await B.js(wc, COOKIE_PAGE_JS)) === 'yes') return done('NOT_LOGGED_IN', 'Amazon meldet „Bitte aktiviere Cookies“ – einmal unter „🔑 Konten & Passwörter“ → Amazon → „Im Bot-Browser anmelden“');
+        if ((await B.js(wc, COOKIE_PAGE_JS)) === 'yes') return done('NOT_LOGGED_IN', NEW_LOGIN_HINT);
         const st = await loginStep(wc, sess);
         if (st === State.FILLED || st === State.WAIT) { await B.sleep(2000); continue; }
         if (st !== State.NOT_LOGIN_PAGE) return done('NOT_LOGGED_IN', explain(st));
@@ -469,26 +494,40 @@ async function runCart(asin, offerId) {
         await B.sleep(2000);
         continue;
       }
-      if (stage === 10 && url.includes('/aws/cart/add')) {
-        stage = 11;
-        const res = await B.js(wc, AWS_CONFIRM_JS);
-        if (res === 'clicked') t11 = Date.now();
-        else if (res === 'captcha') return done('FAILED', CAPTCHA_DETAIL);
-        else { fastFailed = true; start(); }
+      const onAws = /\/aws\/cart\/add(?!-res)/.test(url);
+      if (stage === 10) {
+        if (onAws) {
+          const res = await B.js(wc, AWS_CONFIRM2_JS);
+          Log.add('Bestätigungsseite: ' + res);
+          if (res === 'clicked') { stage = 11; t11 = Date.now(); }
+          else if (res === 'captcha') return done('FAILED', CAPTCHA_DETAIL);
+          else fallback('kein Knopf');
+        } else {
+          // Amazon hat direkt weitergeleitet (z. B. add-res oder Warenkorb)
+          const cs = await cartState();
+          if (cs.ok || /\/huc\/|\/cart|add-res|smart-wagon/.test(url)) return done('OK', 'Angebot per OfferListingId in den Warenkorb gelegt');
+          if (Date.now() - t11 > 12000) fallback('Seite: ' + url.split('?')[0]);
+        }
       } else if (stage === 11) {
-        if (!url.includes('/aws/cart/add') && (url.includes('/huc/') || url.includes('/cart'))) return done('OK', 'Angebot per OfferListingId in den Warenkorb gelegt');
-        if (Date.now() - t11 > 15000) { fastFailed = true; start(); }
+        const cs = await cartState();
+        if (cs.ok || (!onAws && /\/huc\/|\/cart|add-res|smart-wagon/.test(url))) return done('OK', 'Angebot per OfferListingId in den Warenkorb gelegt');
+        if (Date.now() - t11 > 15000) fallback('keine Bestätigung');
       } else if (stage === 0 && url.includes('/dp/')) {
+        await B.sleep(1000);
+        count0 = (await cartState()).n;
         stage = 1;
         polls = 0;
         const res = await B.js(wc, CLICK_JS);
+        Log.add(`„In den Einkaufswagen“: ${res} (Warenkorb vorher: ${count0})`);
         if (res === 'captcha') return done('FAILED', CAPTCHA_DETAIL);
         if (res !== 'clicked') return done('FAILED', 'Kein „In den Einkaufswagen“-Knopf gefunden (Artikel nicht verfügbar oder Variante nötig)');
       } else if (stage === 1) {
-        if (!url.includes('/aws/cart/add') && (url.includes('/huc/') || url.includes('/cart'))) return done('OK', 'Weiterleitung zum Warenkorb');
-        if ((await B.js(wc, CHECK_JS)) === 'ok') return done('OK', 'Bestätigung von Amazon erhalten');
+        const cs = await cartState();
+        if (cs.ok) return done('OK', 'Bestätigung von Amazon erhalten');
+        if (count0 >= 0 && cs.n > count0) return done('OK', `Warenkorb zeigt jetzt ${cs.n} Artikel`);
+        if (!onAws && /\/huc\/|\/cart\/|smart-wagon/.test(url)) return done('OK', 'Weiterleitung zum Warenkorb');
         polls++;
-        if (polls >= 12) return done('FAILED', 'Keine Bestätigung von Amazon erhalten');
+        if (polls >= 14) return done('FAILED', `Keine Bestätigung von Amazon erhalten (Seite: ${url.split('?')[0]}, Warenkorb ${count0} → ${cs.n})`);
       }
       await B.sleep(1500);
     }

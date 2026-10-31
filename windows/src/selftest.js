@@ -37,6 +37,7 @@ function amazon(u) {
       <input id="buy-now-button" type="button" value="Jetzt kaufen" onclick="location.href='/checkout/spc'">`);
   }
   if (p === '/dp/B000TEST06') return page('Test6', '<span id="productTitle">Cookie-Test</span><input id="buy-now-button" type="button" value="Jetzt kaufen" onclick="location.href=\'/ax/claim?x=1\'">');
+  if (p === '/dp/B000TEST08') return page('Test8', '<span id="nav-cart-count">2</span><span id="productTitle">Seitenfenster</span><input id="add-to-cart-button" type="button" value="In den Einkaufswagen" onclick="setTimeout(function(){document.getElementById(\'nav-cart-count\').textContent=\'3\'},800)">');
   if (p === '/dp/B000TEST07') return page('Test7', '<span id="productTitle">Login-Test</span><input id="buy-now-button" type="button" value="Jetzt kaufen" onclick="location.href=\'/ax/claim/login\'">');
   if (p === '/ax/claim/login') return page('Anmelden', '<h1>Anmelden oder Konto erstellen</h1><form><input name="email" id="ap_email_login"><span id="continue"><input type="submit" value="Weiter"></span></form>');
   if (p.startsWith('/ax/claim')) return page('Anmelden oder Konto erstellen', '<h1>Bitte aktiviere Cookies, um fortzufahren</h1><a href="#">Zurück zur vorherigen Seite</a>');
@@ -227,6 +228,10 @@ async function run() {
     } else {
       console.log('(Chrome nicht installiert – Chrome-Test übersprungen)');
     }
+
+    // Warenkorb über die Produktseite: Amazon zeigt nur ein Seitenfenster, der Zähler im Warenkorb steigt
+    let c2 = await A.addToCart('B000TEST08', null);
+    check('Amazon-Warenkorb (Seitenfenster, Zähler steigt)', c2.result === 'OK', c2.detail);
 
     // 5) Amazon-Warenkorb per OfferListingId
     const c = await A.addToCart('B000TEST01', 'ABC+def123');
