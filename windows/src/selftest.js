@@ -138,6 +138,11 @@ function handler(req) {
   } else if (u.hostname === 'www.amazon.de') r = page('Amazon.de', '<h1>Amazon über Payback</h1>');
   else if (u.hostname === 'www.paypal.com') r = page('PayPal', '<form><input id="email" type="email"><button type="button" onclick="document.getElementById(\'pwbox\').style.display=\'block\'">Weiter</button><div id="pwbox" style="display:none"><input id="password" type="password"></div></form>');
   else if (u.hostname === 'updates.mock.test') r = JSON.stringify({ build: 99, android: { versionCode: 999, versionName: '99.0' }, windows: { version: '99.0.0', url: 'https://updates.mock.test/MrFoxBot-Setup-99.0.0.exe' } });
+  else if (u.hostname === 'www.mock-mueller.test') r = page('Müller Produkt', `<h1>Fuchs-Spielzeug</h1><div>19,99 €</div>
+      <script type="application/ld+json">{"@type":"Product","name":"Fuchs-Spielzeug","offers":{"price":"19.99","availability":"https://schema.org/OutOfStock"}}</script>
+      <button onclick="document.getElementById('dlg').style.display='block'">Verfügbarkeit in der Filiale prüfen</button>
+      <div id="dlg" role="dialog" style="display:none"><form onsubmit="return false"><input placeholder="PLZ oder Ort" id="plz">
+        <button type="button" onclick="var v=document.getElementById('plz').value;document.getElementById('res').innerHTML=v==='12345'?'<ul><li>Müller Hauptstraße<br>Hauptstr. 1, 12345 Musterstadt<br>Verfügbar</li><li>Müller Bahnhof<br>Bahnhofplatz 2, 12347 Musterstadt<br>Nicht verfügbar</li><li>Müller Center<br>Am Markt 5, 12349 Musterdorf<br>Wenige vorrätig</li></ul>':'<p>Keine Filialen</p>'">Suchen</button></form><div id="res"></div></div>`);
   else if (u.hostname === 't.me') r = telegram(u);
   else if (u.hostname === 's.pirat.deals') r = pirat(u);
   else if (u.hostname === 'www.mock-amazon.test') r = amazon(u);
@@ -232,6 +237,19 @@ async function run() {
     // Warenkorb über die Produktseite: Amazon zeigt nur ein Seitenfenster, der Zähler im Warenkorb steigt
     let c2 = await A.addToCart('B000TEST08', null);
     check('Amazon-Warenkorb (Seitenfenster, Zähler steigt)', c2.result === 'OK', c2.detail);
+
+    // Müller-Filialen per PLZ
+    Store.setSettings({ muellerPlz: '12345' });
+    const mst = await require('./stores').check('https://www.mock-mueller.test/p/fuchs-spielzeug-PPN1234567/', '12345');
+    check('Müller: Filialen per PLZ gelesen', mst.length === 3 && mst.filter((x) => x.a).length === 2 && /Hauptstr\. 1, 12345/.test(mst[0].addr), JSON.stringify(mst));
+    Store.add({ asin: 'MUE-PPN1234567', name: 'Fuchs-Spielzeug', shop: 'mueller', url: 'https://www.mock-mueller.test/p/fuchs-spielzeug-PPN1234567/', storeCheck: true });
+    const nA = Store.alerts().length;
+    await Checker.checkAll((x) => x.asin === 'MUE-PPN1234567');
+    const fa = Store.alerts()[0] || {};
+    check('Müller: Filial-Alarm', Store.alerts().length > nA && /Filiale/.test(fa.text) && /Hauptstraße/.test(fa.text) && /Center/.test(fa.text), (fa.text || '').replace(/\n/g, ' | '));
+    await Checker.checkAll((x) => x.asin === 'MUE-PPN1234567');
+    check('Müller: kein doppelter Filial-Alarm', Store.alerts().filter((x) => /Filiale/.test(x.text)).length === 1, '');
+    Store.remove('MUE-PPN1234567');
 
     // 5) Amazon-Warenkorb per OfferListingId
     const c = await A.addToCart('B000TEST01', 'ABC+def123');

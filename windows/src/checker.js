@@ -49,8 +49,40 @@ async function checkAll(which = () => true) {
 async function checkProduct(domain, dropPct, p) {
   const ws = webShop(p);
   if (ws && Store.isCategory(p)) return handleCategory(ws, p, await Shops.fetchCategory(ws, p.url));
-  if (ws) return handle(domain, dropPct, p.asin, await Shops.fetchProduct(ws, p.url));
+  if (ws) {
+    await handle(domain, dropPct, p.asin, await Shops.fetchProduct(ws, p.url));
+    if (ws.key === 'mueller' && p.storeCheck && Store.setting('muellerPlz')) await checkStores(p);
+    return;
+  }
   return handle(domain, dropPct, p.asin, await Scraper.fetchAmazon(B.ses(), domain, p.asin));
+}
+
+/**
+ * Müller-Filialen: Verfügbarkeit per PLZ prüfen und melden, wenn eine Filiale den Artikel (wieder) hat.
+ * Gibt die Filialliste zurück.
+ */
+async function checkStores(p, opts) {
+  const plz = String(Store.setting('muellerPlz') || '').trim();
+  if (!plz) throw new Error('Keine PLZ für Müller-Filialen eingetragen (Einstellungen)');
+  const stores = await require('./stores').check(p.url, plz, opts);
+  let prev = {};
+  try { prev = JSON.parse(p.storeState || '{}'); } catch (e) { prev = {}; }
+  const now = {};
+  const fresh = [];
+  for (const s of stores) {
+    const k = s.name + '|' + s.addr;
+    now[k] = { a: s.a, st: s.status };
+    if (s.a && !(prev[k] && prev[k].a)) fresh.push(s);
+  }
+  Store.update(p.asin, (x) => { x.storeState = JSON.stringify(now); x.storeCheckAt = Date.now(); });
+  if (fresh.length) {
+    const text = `🏪 Jetzt in ${fresh.length === 1 ? 'einer Müller-Filiale' : fresh.length + ' Müller-Filialen'} verfügbar (PLZ ${plz}):\n` +
+      fresh.map((s) => `✅ ${s.name}${s.addr ? ', ' + s.addr : ''} – ${s.status}`).join('\n');
+    notifyUser('🏪 ' + p.name, text, { page: p.url, cart: p.url, checkout: Shops.byKey('mueller').cartUrl });
+    if (Store.setting('openOnAlert')) WebWin.open(p.url);
+    await sendDiscord(Store.setting('webhook'), `🟠 **${p.name}**\n${text}\nProdukt: <${p.url}>`);
+  }
+  return stores;
 }
 
 /** Einzelnes Produkt sofort prüfen. Gibt null bei Erfolg zurück, sonst eine Fehlermeldung. */
@@ -352,4 +384,4 @@ async function telegramDeal(d) {
   if (addedId) checkOne(addedId).catch(() => {});
 }
 
-module.exports = { checkAll, checkOne, offerInfo, sendDiscord, sendAllOffers, notifyUser, paybackStarter, telegramDeal };
+module.exports = { checkStores, checkAll, checkOne, offerInfo, sendDiscord, sendAllOffers, notifyUser, paybackStarter, telegramDeal };

@@ -138,6 +138,13 @@ function describe(p) {
   if (p.seller) lines.push('Verkauf: ' + p.seller);
   if (p.pinnedOffer) lines.push('📌 Angebot festgehalten' + (p.pinnedSeller ? ` (${p.pinnedSeller})` : '') + (p.offerId && p.offerId !== p.pinnedOffer ? ' – gerade liegt ein ANDERES Angebot in der Kaufbox' : ''));
   if (p.cartOffer) lines.push('OfferListingId: ' + p.cartOffer);
+  if (p.storeCheck) {
+    let st = {};
+    try { st = JSON.parse(p.storeState || '{}'); } catch (e) { st = {}; }
+    const all = Object.keys(st);
+    const av = all.filter((k) => st[k].a).map((k) => k.split('|')[0]);
+    lines.push(`🏪 Filialen (PLZ ${S.settings.muellerPlz || '?'}): ` + (p.storeCheckAt ? `${av.length} von ${all.length} haben es${av.length ? ' – ' + av.slice(0, 3).join(', ') : ''} (${fmt(p.storeCheckAt)})` : 'noch nicht geprüft'));
+  }
   if (p.lastBuyResult) lines.push('Letzter Auto-Kauf' + (p.lastBuyAttempt ? ` (${fmt(p.lastBuyAttempt)})` : '') + ': ' + p.lastBuyResult);
   return lines.join('\n');
 }
@@ -205,6 +212,19 @@ function row(p) {
     acts.append(act('Zielpreis ändern', () => editTarget(p)));
   } else {
     if (ws) acts.append(act('Zur Produktseite', () => call('open', p.url)));
+    if (ws && ws.key === 'mueller') {
+      acts.append(act(p.storeCheck ? '🏪 Filial-Alarm aus' : '🏪 Filial-Alarm an', () => call('setStoreCheck', p.asin, !p.storeCheck)));
+      acts.append(act('🏪 Filialen jetzt prüfen', async () => {
+        toast('Prüfe Müller-Filialen …', 4000);
+        const r = await call('storeTest', p.asin);
+        if (r.error) return modal('Müller-Filialen', '⚠️ ' + r.error + '\n\nFür die Fehlersuche: Export/Import → „📋 Letzten Ablauf kopieren“ und mir schicken.');
+        const box = el('div');
+        for (const s of r.stores) box.append(el('div', { class: 'catitem' }, el('span', {}, (s.a ? '✅ ' : '❌ ') + s.name + (s.addr ? '\n' + s.addr : '')), el('span', {}, s.status)));
+        if (!r.stores.length) box.append(el('div', { class: 'hint' }, 'Keine Filialen gefunden.'));
+        modal(`Müller-Filialen bei PLZ ${r.plz}`, box, [['Produkt öffnen', 'open'], ['OK', true, 'primary']]).then((v) => { if (v === 'open') call('open', p.url); });
+        return '';
+      }));
+    }
     else acts.append(act('In den Warenkorb (Link)', () => call('open', p.cartUrl)));
     acts.append(act('Automatisch in Warenkorb (Test)', () => { toast('Test läuft, bitte etwa 20–90 Sekunden warten …', 4000); return call('cartTest', p.asin); }));
     acts.append(act('Zur Kasse', () => call('open', ws ? ws.cartUrl : `https://www.${S.settings.domain}/gp/cart/view.html`, !ws)));
@@ -281,6 +301,7 @@ function renderSettings() {
   $('sAmazonInterval').value = s.amazonInterval;
   $('sInterval').value = s.interval;
   $('sDrop').value = s.drop;
+  $('sPlz').value = s.muellerPlz || '';
   $('sWebhook').value = s.webhook;
   $('sAutoCart').checked = s.autoCart;
   $('sAutoBuy').checked = s.autoBuy;
@@ -293,7 +314,7 @@ function renderSettings() {
 $('saveSettings').addEventListener('click', async () => {
   toast(await call('saveSettings', {
     domain: $('sDomain').value, amazonInterval: $('sAmazonInterval').value, interval: $('sInterval').value,
-    drop: $('sDrop').value, webhook: $('sWebhook').value, autoCart: $('sAutoCart').checked, autoBuy: $('sAutoBuy').checked,
+    drop: $('sDrop').value, muellerPlz: $('sPlz').value, webhook: $('sWebhook').value, autoCart: $('sAutoCart').checked, autoBuy: $('sAutoBuy').checked,
     preferPaypal: $('sPaypal').checked, openOnAlert: $('sOpen').checked, watchBuy: $('sWatch').checked,
     externalBrowser: $('sExternal').checked, paybackAutoBuy: S.settings.paybackAutoBuy, keepAwake: $('sAwake').checked,
   }));

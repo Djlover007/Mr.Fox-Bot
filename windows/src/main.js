@@ -321,6 +321,24 @@ const api = {
     return { ok: true, msg: 'Hinzugefügt – prüfe …' };
   },
   remove: (id) => { Store.remove(id); pushState(); },
+  setStoreCheck: (id, on) => {
+    if (on && !Store.setting('muellerPlz')) return 'Erst unter Einstellungen die PLZ für Müller-Filialen eintragen und speichern.';
+    Store.update(id, (p) => { p.storeCheck = !!on; if (!on) p.storeState = '{}'; });
+    pushState();
+    return on ? 'Filial-Alarm an – bei jeder Müller-Prüfung schaut der Bot in die Filialen.' : 'Filial-Alarm aus.';
+  },
+  storeTest: async (id) => {
+    const p = Store.get(id);
+    if (!p) return { error: 'Produkt fehlt.' };
+    try {
+      Log.start('Filial-Check ' + p.name);
+      const stores = await Checker.checkStores(p, { visible: Store.setting('watchBuy') !== false });
+      pushState();
+      return { stores, plz: Store.setting('muellerPlz') };
+    } catch (e) {
+      return { error: e.message };
+    }
+  },
   togglePause: (id) => { Store.update(id, (p) => { p.paused = !p.paused; }); pushState(); },
   setTarget: (id, v) => {
     const t = v === '' || v == null ? null : Number(String(v).replace(',', '.'));
@@ -387,6 +405,7 @@ const api = {
       interval: Math.max(5, parseInt(o.interval, 10) || 60),
       amazonInterval: Math.max(1, parseInt(o.amazonInterval, 10) || 2),
       drop: Math.max(0, parseInt(o.drop, 10) || 0),
+      muellerPlz: String(o.muellerPlz || '').replace(/\D/g, '').slice(0, 5),
       webhook: String(o.webhook || '').trim(),
       autoCart: !!o.autoCart,
       autoBuy: !!o.autoBuy,

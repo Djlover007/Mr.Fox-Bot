@@ -30,6 +30,7 @@ const DEFAULTS = {
   keepAwake: true,
   theme: 'dark',
   autoUpdate: true,
+  muellerPlz: '',
   amazonChrome: true,
   chromePath: '',
   status: '–',
@@ -107,6 +108,9 @@ function normalize(p) {
     url: p.url || '',
     catState: typeof p.catState === 'string' ? p.catState : JSON.stringify(p.catState || {}),
     paused: !!p.paused,
+    storeCheck: !!p.storeCheck,
+    storeState: typeof p.storeState === 'string' ? p.storeState : JSON.stringify(p.storeState || {}),
+    storeCheckAt: Number(p.storeCheckAt || 0),
   };
 }
 
@@ -219,7 +223,7 @@ function clearAlerts() {
 }
 
 // ---------- Export / Import (gleiches Format wie die Android-App) ----------
-const SETTING_KEYS = ['domain', 'interval', 'amazonInterval', 'drop', 'webhook', 'autoCart', 'preferPaypal', 'tgEnabled', 'tgChannels', 'tgKeywords', 'tgExclude', 'tgMaxPrice', 'tgAction', 'tgInterval', 'tgPayback'];
+const SETTING_KEYS = ['domain', 'interval', 'amazonInterval', 'drop', 'webhook', 'autoCart', 'preferPaypal', 'tgEnabled', 'tgChannels', 'tgKeywords', 'tgExclude', 'tgMaxPrice', 'tgAction', 'tgInterval', 'tgPayback', 'muellerPlz'];
 
 function exportJson() {
   load();
