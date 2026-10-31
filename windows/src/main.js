@@ -41,6 +41,16 @@ let updateInfo = null;
 let updateStatus = '';
 let updateNotified = '';
 
+/** Ergebnis von Warenkorb/Probelauf/Kauf auch in der Alarm-Liste (mit Links) und als Windows-Meldung zeigen. */
+function resultAlert(p, kind, text) {
+  const ws = Shops.byKey(p.shop);
+  Checker.notifyUser(`${kind}: ${p.name}`, text, {
+    page: Store.pageUrl(p),
+    cart: ws ? ws.cartUrl : A.checkoutUrl(),
+    checkout: ws ? ws.cartUrl : A.checkoutUrl(),
+  });
+}
+
 // ---------------- Automatisches Update ----------------
 async function checkUpdate(manual) {
   try {
@@ -353,7 +363,9 @@ const api = {
     const r = ws
       ? await ShopBuyer.buy(ws, p.url, p.asin, { dryRun: true, visible, beforeStart })
       : await A.buy(p.asin, { dryRun: true, visible, beforeStart });
-    return A.describe(r) + (note.text ? '\n' + note.text : '');
+    const text = A.describe(r) + (note.text ? '\n' + note.text : '');
+    resultAlert(p, '🧪 Probelauf', text);
+    return text;
   },
   cartTest: async (id) => {
     const p = Store.get(id);
@@ -361,7 +373,9 @@ const api = {
     const ws = Shops.byKey(p.shop);
     const r = ws ? await ShopBuyer.addToCart(ws, p.url, p.asin) : await A.addToCart(p.asin, Store.cartOffer(p));
     if (r.result === 'OK') { Store.update(id, (x) => { x.lastCartAdd = Date.now(); }); pushState(); }
-    return r.result === 'OK' ? '✅ Im Warenkorb: ' + r.detail : r.result === 'NOT_LOGGED_IN' ? '⚠️ Nicht angemeldet: ' + r.detail : '⚠️ Nicht geklappt: ' + r.detail;
+    const text = r.result === 'OK' ? '✅ Im Warenkorb: ' + r.detail : r.result === 'NOT_LOGGED_IN' ? '⚠️ Nicht angemeldet: ' + r.detail : '⚠️ Nicht geklappt: ' + r.detail;
+    resultAlert(p, '🛒 Warenkorb', text);
+    return text;
   },
   open: (url, checkout) => { WebWin.open(url, { checkout: !!checkout }); },
   openViaPayback: (key, url) => { WebWin.openViaPayback(key, url); },

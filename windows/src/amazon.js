@@ -452,7 +452,8 @@ async function runCart(asin, offerId, { beforeStart } = {}) {
   const fastUrl = offerId ? cartUrl(asin, offerId) : null;
   let fastFailed = !fastUrl;
   Log.start('Amazon-Warenkorb: ' + productUrl + (offerId ? ' (OfferListingId)' : ''));
-  const w = await openAmazonWindow(false, 'Amazon-Warenkorb …');
+  const visible = Store.setting('watchBuy') !== false; // Warenkorb im sichtbaren Fenster zeigen
+  const w = await openAmazonWindow(visible, 'Amazon-Warenkorb …');
   const wc = w.webContents;
   let stage = 0;
   let polls = 0;
@@ -465,7 +466,10 @@ async function runCart(asin, offerId, { beforeStart } = {}) {
   const deadline = Date.now() + 90000;
   const done = (result, detail) => {
     Log.add(`Ergebnis: ${result} – ${detail}`);
-    if (!w.isDestroyed()) w.destroy();
+    if (visible || w.isChrome) {
+      // Fenster bleibt offen, damit du das Ergebnis siehst
+      if (!w.isDestroyed()) w.setTitle((result === 'OK' ? '✅ Im Warenkorb: ' : '⚠️ Warenkorb: ') + detail);
+    } else if (!w.isDestroyed()) w.destroy();
     return { result, detail };
   };
   const start = () => {

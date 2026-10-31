@@ -81,8 +81,10 @@ function loginJs(email, pw) {
 const Mode = { CART: 'CART', BUY: 'BUY', DRY: 'DRY' };
 
 /** In den Warenkorb legen. Ergebnis {result: 'OK'|'NOT_LOGGED_IN'|'FAILED', detail}. */
-async function addToCart(shop, url, productId) {
-  const r = await A.exclusive(() => run(shop, url, productId, Mode.CART, false));
+async function addToCart(shop, url, productId, opts) {
+  // sichtbar, wenn „Warenkorb/Kauf im Fenster zeigen“ an ist (Standard)
+  const visible = opts && opts.visible != null ? opts.visible : Store.setting('watchBuy') !== false;
+  const r = await A.exclusive(() => run(shop, url, productId, Mode.CART, visible));
   const result = r.outcome === Outcome.DRY_RUN_OK ? 'OK' : r.outcome === Outcome.NOT_LOGGED_IN ? 'NOT_LOGGED_IN' : 'FAILED';
   return { result, detail: r.detail };
 }
