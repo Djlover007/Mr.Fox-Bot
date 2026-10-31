@@ -70,7 +70,7 @@ function renderBot() {
     ? '🟢 Bot läuft (Dauerbetrieb)' + (bot.activity ? ' – ' + bot.activity : '')
     : '🔴 Dauerbetrieb aus' + (bot.activity ? ' – ' + bot.activity : ' – starte ihn, damit automatisch geprüft wird');
   $('botSum').textContent = bot.summary;
-  $('botStatus').textContent = 'Status: ' + bot.status;
+  $('botStatus').textContent = 'Status: ' + bot.status + (bot.chrome ? '\nChrome: ' + bot.chrome : '');
   $('botBtn').textContent = bot.running ? 'Dauerbetrieb stoppen' : 'Dauerbetrieb starten';
   $('botBtn').className = bot.running ? '' : 'primary';
 }
@@ -335,7 +335,9 @@ function loginCard(key, title, hint, loginUrl) {
         mail.value = ''; pw.value = '';
         return call('clearLogin', key);
       }, 'danger'),
-      act('🔐 Im Bot-Browser anmelden', () => call('openInApp', loginUrl))));
+      key === 'amazon' && S.settings.amazonChrome !== false
+        ? act('🔐 In Chrome anmelden', () => call('chromeLogin'), 'primary')
+        : act('🔐 Im Bot-Browser anmelden', () => call('openInApp', loginUrl))));
 }
 function renderLogins() {
   if (loginsBusy()) return;
@@ -362,10 +364,13 @@ function renderUpdate() {
   $('updText').textContent = u.status || (u.available ? `⬆️ Update ${u.version} ist da (du hast ${S.version}).` : '');
   $('updBtn').style.display = u.available && !u.installing ? '' : 'none';
   $('sAutoUpdate').checked = S.settings.autoUpdate !== false;
+  $('sAmazonChrome').checked = S.settings.amazonChrome !== false;
+  $('chromeInfo').textContent = S.chromeFound ? '✅ Google Chrome gefunden. Einmal unter „🔑 Konten & Passwörter“ → Amazon → „🔐 In Chrome anmelden“.' : '⚠️ Google Chrome nicht gefunden – bitte installieren (sonst nimmt der Bot den eingebauten Browser).';
   $('verInfo').textContent = 'Installiert: ' + S.version;
 }
 $('updBtn').addEventListener('click', async () => toast(await call('installUpdate')));
 $('checkUpd').addEventListener('click', async () => { toast('Suche Updates …', 2500); toast(await call('checkUpdate')); });
+$('sAmazonChrome').addEventListener('change', () => call('setSetting', 'amazonChrome', $('sAmazonChrome').checked));
 $('sAutoUpdate').addEventListener('change', () => call('setSetting', 'autoUpdate', $('sAutoUpdate').checked));
 
 // ---------------- Darstellung ----------------

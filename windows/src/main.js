@@ -36,6 +36,7 @@ let botBusy = false;
 let botActivity = '';
 let awakeId = null;
 let tgStatus = '';
+let chromeStatus = '';
 let updateInfo = null;
 let updateStatus = '';
 let updateNotified = '';
@@ -253,7 +254,8 @@ function state() {
     shops: Shops.SHOPS.map((x) => ({ key: x.key, label: x.label, emoji: x.emoji, base: x.base, cartUrl: x.cartUrl, accountUrl: x.accountUrl, enabled: Store.shopEnabled(x.key) })),
     amazonEnabled: Store.shopEnabled('amazon'),
     paybackPartners: Object.keys(Payback.PARTNERS).map((k) => ({ key: k, label: Payback.PARTNERS[k].label, on: Store.payback(k) })),
-    bot: { running: botRunning(), activity: botActivity, summary: summary(), status: s.status, checking },
+    bot: { running: botRunning(), activity: botActivity, summary: summary(), status: s.status, checking, chrome: chromeStatus },
+    chromeFound: !!require('./chrome').findChrome(s.chromePath),
     alerts: Store.alerts(),
     autostart: app.getLoginItemSettings().openAtLogin,
     update: { available: !!updateInfo, version: updateInfo ? updateInfo.version : '', status: updateStatus, installing },
@@ -493,6 +495,14 @@ const api = {
       return { error: e.message };
     }
   },
+  chromeLogin: async () => {
+    try {
+      await require('./chrome').openTab(A.chromeOpts({ url: `https://www.${Store.setting('domain')}/gp/sign-in.html`, foreground: true }));
+      return 'Chrome ist offen – dort bei Amazon anmelden und „Angemeldet bleiben“ anhaken. Danach kauft der Bot über dieses Chrome.';
+    } catch (e) {
+      return '⚠️ ' + e.message;
+    }
+  },
   checkUpdate: () => checkUpdate(true),
   installUpdate: () => { if (!updateInfo) return 'Kein Update vorhanden.'; maybeInstall(); return 'Update wird geladen und installiert – der Bot startet danach neu.'; },
   setTheme: (mode) => {
@@ -504,7 +514,7 @@ const api = {
   },
   revealPassword: (key) => Store.loginPassword(key) || '',
   setSetting: (k, v) => {
-    const allowed = ['autoUpdate', 'paybackAutoBuy', 'preferPaypal', 'watchBuy', 'openOnAlert', 'externalBrowser', 'autoCart', 'keepAwake'];
+    const allowed = ['amazonChrome', 'autoUpdate', 'paybackAutoBuy', 'preferPaypal', 'watchBuy', 'openOnAlert', 'externalBrowser', 'autoCart', 'keepAwake'];
     if (!allowed.includes(k)) return 'Nicht erlaubt.';
     Store.setSettings({ [k]: !!v });
     pushState();
@@ -526,6 +536,7 @@ app.on('window-all-closed', (e) => { /* im Hintergrund weiterlaufen (Tray) */ })
 
 app.whenReady().then(async () => {
   if (!gotLock) return;
+  require('./chrome').setStatusHook((s) => { chromeStatus = s; pushState(); });
   B.setupSession();
   Store.load();
   nativeTheme.themeSource = Store.setting('theme') || 'dark';

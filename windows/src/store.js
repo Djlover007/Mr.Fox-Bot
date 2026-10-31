@@ -30,6 +30,8 @@ const DEFAULTS = {
   keepAwake: true,
   theme: 'dark',
   autoUpdate: true,
+  amazonChrome: true,
+  chromePath: '',
   status: '–',
   lastRun_amazon: 0,
   lastRun_shops: 0,

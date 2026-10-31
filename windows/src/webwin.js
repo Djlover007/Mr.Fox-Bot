@@ -38,6 +38,14 @@ function open(url, { checkout = false, forceInApp = false } = {}) {
     return null;
   }
   const A = require('./amazon');
+  // Amazon-Seiten im Bot-Chrome öffnen (dort ist der Bot bei Amazon angemeldet)
+  if (A.useChrome() && /(^|\.)amazon\.[a-z.]+$/i.test((() => { try { return new URL(url).hostname; } catch (e) { return ''; } })())) {
+    require('./chrome').openTab(A.chromeOpts({ url, foreground: true })).catch((e) => {
+      const { dialog } = require('electron');
+      dialog.showErrorBox('Chrome', e.message);
+    });
+    return null;
+  }
   const w = B.newWindow({ show: true, title: 'Mr.Fox Bot – Browser', width: 1280, height: 950 });
   const wc = w.webContents;
   w.removeAllListeners('page-title-updated'); // hier den Seitentitel zeigen

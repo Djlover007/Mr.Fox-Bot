@@ -144,3 +144,4 @@ button.big { padding: 10px 22px; font-size: 15px; }
 .upd { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; margin-bottom: 12px;
   border: 1px solid var(--fox); border-radius: 12px; background: rgba(244, 128, 42, .14); font-weight: 600; }
 .upd.hidden { display: none; }
+.botstatus { white-space: pre-line; }

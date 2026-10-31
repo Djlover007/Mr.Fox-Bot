@@ -213,12 +213,40 @@ function buy(asin, opts) {
   return exclusive(() => runBuy(asin, opts));
 }
 
+/** Amazon über echtes Google Chrome (eigenes Bot-Profil)? Sonst eingebauter Browser. */
+function useChrome() { return Store.setting('amazonChrome') !== false; }
+
+function chromeOpts(extra) {
+  const path = require('path');
+  return Object.assign({
+    chromePath: Store.setting('chromePath') || null,
+    profileDir: path.join(require('electron').app.getPath('userData'), 'chrome-bot-profil'),
+  }, extra || {});
+}
+
+/** Fenster für einen Amazon-Ablauf: Chrome-Tab (Standard) oder Bot-Fenster. */
+async function openAmazonWindow(visible, title) {
+  if (useChrome()) {
+    try {
+      const t = await require('./chrome').openTab(chromeOpts({ foreground: visible }));
+      t.isChrome = true;
+      t.setTitle(title);
+      return t;
+    } catch (e) {
+      Log.add('Chrome nicht nutzbar, nehme eingebauten Browser: ' + e.message);
+    }
+  }
+  return visible ? B.watchWindow(title, reportOf) : B.newWindow({ show: false });
+}
+
 async function runBuy(asin, { dryRun, visible, beforeStart }) {
   const domain = Store.setting('domain');
   const productUrl = `https://www.${domain}/dp/${asin}`;
   const prefix = dryRun ? 'Amazon-Probelauf: ' : 'Amazon-Auto-Kauf: ';
   Log.start(prefix + productUrl);
-  const w = visible ? B.watchWindow(prefix + 'startet …', reportOf) : B.newWindow({ show: false });
+  const w = await openAmazonWindow(visible, prefix + 'startet …');
+  const inChrome = !!w.isChrome;
+  if (inChrome) visible = true; // Chrome-Tab ist immer sichtbar – dort kannst du dich auch selbst anmelden
   const wc = w.webContents;
   let closed = false;
   let lastStatus = '';
@@ -250,7 +278,9 @@ async function runBuy(asin, { dryRun, visible, beforeStart }) {
    */
   const manualLogin = async () => {
     if (!visible) return { outcome: Outcome.NOT_LOGGED_IN, detail: NEW_LOGIN_HINT };
-    status('Bitte in DIESEM Fenster selbst bei Amazon anmelden („Angemeldet bleiben“ anhaken) – der Bot wartet bis zu 3 Minuten …');
+    status(inChrome
+      ? 'Bitte im Chrome-Fenster des Bots bei Amazon anmelden („Angemeldet bleiben“ anhaken) – der Bot wartet bis zu 3 Minuten …'
+      : 'Bitte in DIESEM Fenster selbst bei Amazon anmelden („Angemeldet bleiben“ anhaken) – der Bot wartet bis zu 3 Minuten …');
     Log.add('Warte auf Anmeldung von Hand (neue Amazon-Anmeldeseite)');
     const end = Date.now() + 180000;
     while (Date.now() < end) {
@@ -285,7 +315,7 @@ async function runBuy(asin, { dryRun, visible, beforeStart }) {
 
   try {
     if (beforeStart) await beforeStart(wc, status);
-    await ensureSession(wc, status);
+    if (!inChrome) await ensureSession(wc, status);
     status('Lade Produktseite …');
     B.load(wc, productUrl);
     await B.sleep(2500);
@@ -405,7 +435,7 @@ async function runCart(asin, offerId) {
   const productUrl = `https://www.${Store.setting('domain')}/dp/${asin}`;
   const fastUrl = offerId ? cartUrl(asin, offerId) : null;
   let fastFailed = !fastUrl;
-  const w = B.newWindow({ show: false });
+  const w = await openAmazonWindow(false, 'Amazon-Warenkorb …');
   const wc = w.webContents;
   let stage = 0;
   let polls = 0;
@@ -419,7 +449,7 @@ async function runCart(asin, offerId) {
     if (!fastFailed && fastUrl) { stage = 10; B.load(wc, fastUrl); } else { stage = 0; B.load(wc, productUrl); }
   };
   try {
-    await ensureSession(wc);
+    if (!w.isChrome) await ensureSession(wc);
     start();
     await B.sleep(2000);
     while (Date.now() < deadline) {
@@ -491,6 +521,6 @@ async function reportOf(wc) {
 }
 
 module.exports = {
-  Outcome, describe, money, State, newSession, loginStep, explain, isAmazon, isLoginUrl,
+  Outcome, describe, money, State, newSession, loginStep, explain, isAmazon, isLoginUrl, useChrome, chromeOpts,
   buy, addToCart, exclusive, cartUrl, checkoutUrl, ordersUrl, encodeOffer, reportOf, FIND_TOTAL_JS,
 };

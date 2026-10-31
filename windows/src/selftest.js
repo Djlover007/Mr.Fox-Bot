@@ -157,6 +157,7 @@ const MOCK_MM = Object.assign({}, Shops.byKey('mediamarkt'), {
 async function run() {
   const ses = B.ses();
   ses.protocol.handle('https', handler);
+  Store.setSettings({ amazonChrome: false, chromePath: process.env.MRFOX_CHROME_PATH || '' });
   Store.setSettings({ domain: 'mock-amazon.test', webhook: '', autoCart: false, autoBuy: false, preferPaypal: true, watchBuy: false });
   try {
     // 1) Amazon auslesen
@@ -200,6 +201,32 @@ async function run() {
     const rep = await A.reportOf(cw.webContents);
     check('Browser: Kennung „Google Chrome“ + Cookie-Diagnose', /Google Chrome/.test(rep) && /Test-Cookie=ok/.test(rep), (rep.split('--- Cookies')[1] || '').split('--- Ablauf')[0].replace(/\n/g, ' | '));
     cw.destroy();
+
+    // Echtes Chrome steuern (wenn installiert)
+    const Ch = require('./chrome');
+    if (Ch.findChrome(Store.setting('chromePath'))) {
+      const http = require('http');
+      const srv = http.createServer((q, r2) => { r2.setHeader('content-type', 'text/html; charset=utf-8'); r2.end(q.url === '/2' ? '<title>Zwei</title><p id="y">zwei</p>' : '<h1 id="x">Fuchs</h1><button onclick="location.href=\'/2\'">go</button>'); });
+      await new Promise((r2) => srv.listen(0, '127.0.0.1', r2));
+      const base = 'http://127.0.0.1:' + srv.address().port;
+      let msg = '';
+      try {
+        const tab = await Ch.openTab(A.chromeOpts({ url: base + '/' }));
+        await B.sleep(2000);
+        const h = await B.js(tab.webContents, "document.getElementById('x').textContent");
+        await B.js(tab.webContents, "document.querySelector('button').click()");
+        await B.sleep(2000);
+        const y = await B.js(tab.webContents, "document.getElementById('y').textContent");
+        msg = `${h} → ${tab.webContents.getURL()} → ${y}`;
+        tab.destroy();
+        check('Chrome: Tab öffnen, lesen, klicken, Seitenwechsel', h === 'Fuchs' && y === 'zwei' && tab.webContents.getURL().endsWith('/2'), msg);
+      } catch (e) {
+        check('Chrome: Tab öffnen, lesen, klicken, Seitenwechsel', false, e.message);
+      }
+      srv.close();
+    } else {
+      console.log('(Chrome nicht installiert – Chrome-Test übersprungen)');
+    }
 
     // 5) Amazon-Warenkorb per OfferListingId
     const c = await A.addToCart('B000TEST01', 'ABC+def123');
@@ -335,6 +362,7 @@ async function run() {
   } catch (e) {
     check('Ausnahme', false, e.stack || e.message);
   }
+  await require('./chrome').closeChrome();
   const failed = results.filter((r) => !r.ok);
   console.log(`\nSELFTEST: ${results.length - failed.length}/${results.length} OK`);
   if (process.env.GITHUB_ACTIONS) {

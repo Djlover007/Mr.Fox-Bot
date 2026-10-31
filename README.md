@@ -14,6 +14,7 @@ enthält neben der `app-debug.apk` auch `MrFoxBot-Setup-<Version>.exe`.
 - **Gleiche Funktionen wie die App:** Amazon (alle 2 Min.), Müller, MediaMarkt, BAUR (Produkte und Kategorien),
   Zielpreis/Preisfall/Wieder verfügbar, OfferListingId (festhalten, Discord), automatischer Warenkorb, Auto-Kauf
   mit Probelauf, Geräteschutz ablehnen, PayPal bevorzugen, Ratenzahlungs-Sperre, Seitenbericht.
+- **Amazon über echtes Google Chrome:** Amazon lehnt die Anmeldung im eingebauten Browser ab („Bitte aktiviere Cookies“). Deshalb steuert der Bot für Amazon dein installiertes Chrome mit einem eigenen Bot-Profil (Einstellungen → „Amazon über Google Chrome“; einmal unter Konten → Amazon → „In Chrome anmelden“).
 - **Bot-Browser:** alle Abläufe nutzen eine gemeinsame, dauerhafte Sitzung. Einmal bei Amazon, den Shops, PayPal
   und Payback „Im Bot-Browser anmelden“ (2FA von Hand), danach bleibt der Bot angemeldet.
 - **Läuft im Hintergrund:** Fenster schließen = Bot läuft weiter (Fuchs in der Taskleiste). Optional mit Windows
